@@ -16,6 +16,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from git import Repo, InvalidGitRepositoryError, GitCommandError
+from github import Github
 
 logger = logging.getLogger(__name__)
 
@@ -50,14 +51,75 @@ class GitTool:
             )
 
         self.local_path = Path(local_path).resolve()
-        try:
-            self._repo = Repo(self.local_path)
-        except InvalidGitRepositoryError as e:
-            raise EnvironmentError(
-                f"'{self.local_path}' is not a valid git repository."
-            ) from e
-
+        self._repo = self._ensure_repo()
         logger.info(f"GitTool: using repo at '{self.local_path}'")
+
+    def _ensure_repo(self) -> Repo:
+        """
+        Return a Repo object for self.local_path.
+        Resolution order:
+          1. Path exists + is a valid git repo      → use it
+          2. Path exists but not a git repo         → clone into <path>/<repo_name>
+          3. Clone fails (repo not found on GitHub) → create the repo via API, then clone
+          4. Path doesn't exist                     → clone (or create + clone)
+        """
+        clone_url = (
+            f"https://{self.token}@github.com/{self.repo_owner}/{self.repo_name}.git"
+        )
+
+        # Case 1: already a valid repo
+        if self.local_path.exists():
+            try:
+                repo = Repo(self.local_path)
+                logger.info(f"GitTool: existing repo found at '{self.local_path}'")
+                return repo
+            except InvalidGitRepositoryError:
+                logger.warning(
+                    f"GitTool: '{self.local_path}' exists but is not a git repo. "
+                    "Cloning into a new subdirectory..."
+                )
+                self.local_path = self.local_path / self.repo_name
+
+        # Case 2/3/4: attempt clone; create remote repo first if not found
+        self.local_path.mkdir(parents=True, exist_ok=True)
+        try:
+            logger.info(
+                f"GitTool: cloning {self.repo_owner}/{self.repo_name} → '{self.local_path}'"
+            )
+            repo = Repo.clone_from(clone_url, self.local_path)
+            logger.info("GitTool: clone complete. ✅")
+            return repo
+        except GitCommandError as e:
+            if "Repository not found" in str(e.stderr) or "not found" in str(e.stderr).lower():
+                logger.warning(
+                    f"GitTool: repo '{self.repo_owner}/{self.repo_name}' not found on GitHub. "
+                    "Creating it now..."
+                )
+                self._create_github_repo()
+                # Re-clone after creation
+                import shutil
+                if self.local_path.exists():
+                    shutil.rmtree(self.local_path)
+                self.local_path.mkdir(parents=True, exist_ok=True)
+                repo = Repo.clone_from(clone_url, self.local_path)
+                logger.info("GitTool: cloned newly created repo. ✅")
+                return repo
+            raise  # re-raise unexpected git errors
+
+    def _create_github_repo(self) -> None:
+        """Create the GitHub repo via the API using PyGithub."""
+        from github import Auth
+        gh = Github(auth=Auth.Token(self.token))
+        user = gh.get_user()
+        repo = user.create_repo(
+            name=self.repo_name,
+            description=f"Auto-created by ScopeSentinel for {self.repo_name}",
+            private=False,
+            auto_init=True,       # creates a default branch so clone works immediately
+        )
+        logger.info(f"GitTool: GitHub repo created → {repo.html_url} ✅")
+
+
 
     # ------------------------------------------------------------------ public
 
