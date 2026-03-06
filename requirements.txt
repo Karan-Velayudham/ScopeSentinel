@@ -1,0 +1,7 @@
+agentscope
+jira
+PyGithub
+docker
+fastapi
+uvicorn
+python-dotenv
