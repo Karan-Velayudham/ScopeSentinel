@@ -86,10 +86,10 @@ async def run_planner_workflow(ticket_id: str) -> None:
                 logger.warning(f"Could not update Jira ticket: {e}")
                 print(f"  ⚠️  Could not update Jira ticket: {e}")
 
-            # --- Step 4: Code Generation (Epic 4.1) ---
+            # --- Step 4: Code Generation + Sandbox Validation (Epic 4.1–4.3) ---
             print("\n  🤖 Handing off to Coder Agent...\n")
             coder = CoderAgent(model=model)
-            result = await coder.code(ticket, plan)
+            result = await coder.code_with_validation(ticket, plan)
 
             if result.files_written:
                 print(f"\n  📁 Code generated in: {result.workspace_path}")

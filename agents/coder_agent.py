@@ -19,6 +19,7 @@ from agents.planner_agent import PlannerOutput
 logger = logging.getLogger(__name__)
 
 WORKSPACE_ROOT = Path("workspace")
+MAX_CORRECTION_ATTEMPTS = 3
 
 SYSTEM_PROMPT = """\
 You are an expert software engineer implementing code for ScopeSentinel, \
@@ -159,3 +160,98 @@ class CoderAgent:
             files_written=files_written,
             raw_response=raw,
         )
+
+    async def code_with_validation(
+        self,
+        ticket: JiraTicket,
+        plan: PlannerOutput,
+    ) -> CoderOutput:
+        """
+        Generate code, then validate it in a Docker sandbox.
+        If validation fails, feed errors back to the LLM and retry
+        (up to MAX_CORRECTION_ATTEMPTS times).
+
+        Args:
+            ticket: The original JiraTicket.
+            plan:   The HITL-approved PlannerOutput.
+
+        Returns:
+            The final CoderOutput (after self-correction if needed).
+        """
+        from sandbox.sandbox_runner import SandboxRunner
+        from sandbox.validator import CodeValidator
+
+        output = await self.code(ticket, plan)
+        workspace = Path(output.workspace_path)
+
+        try:
+            runner = SandboxRunner(workspace)
+        except RuntimeError as e:
+            logger.warning(f"CoderAgent: Docker unavailable, skipping validation. {e}")
+            return output
+
+        validator = CodeValidator(runner)
+        conversation: list[dict] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": _build_coding_prompt(ticket, plan)},
+            {"role": "assistant", "content": output.raw_response},
+        ]
+
+        for attempt in range(1, MAX_CORRECTION_ATTEMPTS + 1):
+            logger.info(f"CoderAgent: running sandbox validation (attempt {attempt})...")
+            result = validator.validate()
+
+            if result.passed:
+                logger.info(f"CoderAgent: validation passed on attempt {attempt}. ✅")
+                break
+
+            logger.warning(
+                f"CoderAgent: validation failed (attempt {attempt}/{MAX_CORRECTION_ATTEMPTS}).\n"
+                f"{result.output[:800]}"
+            )
+
+            if attempt == MAX_CORRECTION_ATTEMPTS:
+                logger.error("CoderAgent: max correction attempts reached. Proceeding with last output.")
+                break
+
+            # Self-correction: send errors back to the LLM
+            correction_prompt = (
+                f"Your generated code failed validation (attempt {attempt}).\n\n"
+                f"Errors:\n{result.output}\n\n"
+                "Please fix ALL issues. Rewrite every affected file in full using the same "
+                "### `filepath` + fenced code block format. Do not include explanation text."
+            )
+            conversation.append({"role": "user", "content": correction_prompt})
+
+            logger.info("CoderAgent: requesting self-correction from LLM...")
+            response = await self.model(conversation)
+
+            raw = ""
+            if hasattr(response, "content") and isinstance(response.content, list):
+                for block in response.content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        raw = block["text"]
+                        break
+            if not raw:
+                raw = str(response)
+
+            conversation.append({"role": "assistant", "content": raw})
+
+            # Overwrite files with corrected versions
+            files = _parse_files(raw)
+            files_written = []
+            for rel_path, content in files.items():
+                dest = workspace / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(content, encoding="utf-8")
+                files_written.append(rel_path)
+                logger.info(f"  ✍️  Corrected: {dest}")
+
+            output = CoderOutput(
+                ticket_id=ticket.id,
+                workspace_path=str(workspace),
+                files_written=files_written,
+                raw_response=raw,
+            )
+
+        return output
