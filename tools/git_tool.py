@@ -1,11 +1,13 @@
 """
-GitTool: Commits generated code to a new branch and pushes to remote.
+GitTool: Manages a sentinel feature branch and pushes generated code.
 
-Reads configuration from environment variables:
-  - GITHUB_TOKEN:           Personal access token for pushing (repo scope)
-  - GITHUB_REPO_OWNER:      GitHub org/username (e.g. "imkaranvp")
-  - GITHUB_REPO_NAME:       Repository name (e.g. "my-repo")
-  - GITHUB_REPO_LOCAL_PATH: Absolute path to a local clone of the target repo
+The local repo (GITHUB_REPO_LOCAL_PATH / GITHUB_REPO_NAME) is the workspace.
+No separate workspace directory is needed.
+
+Workflow:
+  1. git_tool.prepare_branch(ticket_id)  → checks out sentinel branch, returns repo path
+  2. CoderAgent writes files directly into that path
+  3. git_tool.commit_and_push(ticket_id, summary) → commits everything and pushes
 """
 
 import logging
@@ -33,159 +35,167 @@ class GitResult:
 
 class GitTool:
     """
-    Creates a feature branch, copies workspace files into the repo,
-    commits, and pushes to the remote.
+    Manages a sentinel feature branch in the target repo.
+    The local repo directory acts directly as the code workspace.
     """
 
     def __init__(self):
         load_dotenv()
-        self.token       = os.environ.get("GITHUB_TOKEN", "")
-        self.repo_owner  = os.environ.get("GITHUB_REPO_OWNER", "")
-        self.repo_name   = os.environ.get("GITHUB_REPO_NAME", "")
-        local_path       = os.environ.get("GITHUB_REPO_LOCAL_PATH", "")
+        self.token      = os.environ.get("GITHUB_TOKEN", "")
+        self.repo_owner = os.environ.get("GITHUB_REPO_OWNER", "")
+        self.repo_name  = os.environ.get("GITHUB_REPO_NAME", "")
+        base_path       = os.environ.get("GITHUB_REPO_LOCAL_PATH", "")
 
-        if not all([self.token, self.repo_owner, self.repo_name, local_path]):
+        if not all([self.token, self.repo_owner, self.repo_name, base_path]):
             raise EnvironmentError(
                 "Missing Git config. Please set GITHUB_TOKEN, GITHUB_REPO_OWNER, "
                 "GITHUB_REPO_NAME, and GITHUB_REPO_LOCAL_PATH in your .env file."
             )
 
-        self.local_path = Path(local_path).resolve()
+        # Canonical local path is always GITHUB_REPO_LOCAL_PATH / GITHUB_REPO_NAME
+        self.local_path = (Path(base_path) / self.repo_name).resolve()
+        logger.info(f"GitTool: local repo path → '{self.local_path}'")
         self._repo = self._ensure_repo()
-        logger.info(f"GitTool: using repo at '{self.local_path}'")
 
-    def _ensure_repo(self) -> Repo:
-        """
-        Return a Repo object for self.local_path.
-        Resolution order:
-          1. Path exists + is a valid git repo      → use it
-          2. Path exists but not a git repo         → clone into <path>/<repo_name>
-          3. Clone fails (repo not found on GitHub) → create the repo via API, then clone
-          4. Path doesn't exist                     → clone (or create + clone)
-        """
-        clone_url = (
-            f"https://{self.token}@github.com/{self.repo_owner}/{self.repo_name}.git"
-        )
-
-        # Case 1: already a valid repo
-        if self.local_path.exists():
-            try:
-                repo = Repo(self.local_path)
-                logger.info(f"GitTool: existing repo found at '{self.local_path}'")
-                return repo
-            except InvalidGitRepositoryError:
-                logger.warning(
-                    f"GitTool: '{self.local_path}' exists but is not a git repo. "
-                    "Cloning into a new subdirectory..."
-                )
-                self.local_path = self.local_path / self.repo_name
-
-        # Case 2/3/4: attempt clone; create remote repo first if not found
-        self.local_path.mkdir(parents=True, exist_ok=True)
-        try:
-            logger.info(
-                f"GitTool: cloning {self.repo_owner}/{self.repo_name} → '{self.local_path}'"
-            )
-            repo = Repo.clone_from(clone_url, self.local_path)
-            logger.info("GitTool: clone complete. ✅")
-            return repo
-        except GitCommandError as e:
-            if "Repository not found" in str(e.stderr) or "not found" in str(e.stderr).lower():
-                logger.warning(
-                    f"GitTool: repo '{self.repo_owner}/{self.repo_name}' not found on GitHub. "
-                    "Creating it now..."
-                )
-                self._create_github_repo()
-                # Re-clone after creation
-                import shutil
-                if self.local_path.exists():
-                    shutil.rmtree(self.local_path)
-                self.local_path.mkdir(parents=True, exist_ok=True)
-                repo = Repo.clone_from(clone_url, self.local_path)
-                logger.info("GitTool: cloned newly created repo. ✅")
-                return repo
-            raise  # re-raise unexpected git errors
-
-    def _create_github_repo(self) -> None:
-        """Create the GitHub repo via the API using PyGithub."""
-        from github import Auth
-        gh = Github(auth=Auth.Token(self.token))
-        user = gh.get_user()
-        repo = user.create_repo(
-            name=self.repo_name,
-            description=f"Auto-created by ScopeSentinel for {self.repo_name}",
-            private=False,
-            auto_init=True,       # creates a default branch so clone works immediately
-        )
-        logger.info(f"GitTool: GitHub repo created → {repo.html_url} ✅")
-
-
+    @property
+    def workspace_path(self) -> Path:
+        """The local repo root — this IS the workspace for the Coder Agent."""
+        return self.local_path
 
     # ------------------------------------------------------------------ public
 
-    def push_workspace(
-        self,
-        ticket_id: str,
-        summary: str,
-        workspace_path: str | Path,
-    ) -> GitResult:
+    def prepare_branch(self, ticket_id: str) -> Path:
         """
-        Copy workspace files, commit, and push to a new sentinel branch.
+        Pull latest main and create (or reset) the sentinel/<ticket_id> branch.
+
+        Returns:
+            The local repo path to use as the Coder Agent workspace.
+        """
+        repo = self._repo
+        branch = f"{BRANCH_PREFIX}/{ticket_id}"
+        base = self._base_branch()
+
+        logger.info(f"GitTool: checking out '{base}' and pulling latest...")
+        repo.git.checkout(base)
+        repo.remote("origin").pull()
+
+        # Reset sentinel branch if it already exists
+        if branch in [b.name for b in repo.branches]:
+            logger.info(f"GitTool: resetting existing branch '{branch}'...")
+            repo.delete_head(branch, force=True)
+
+        logger.info(f"GitTool: creating branch '{branch}'...")
+        repo.git.checkout("-b", branch)
+
+        logger.info(f"GitTool: ready — workspace is '{self.local_path}'")
+        return self.local_path
+
+    def commit_and_push(self, ticket_id: str, summary: str) -> GitResult:
+        """
+        Stage all changes in the repo, commit, and push the sentinel branch.
 
         Args:
-            ticket_id:      Jira ticket ID (e.g. "SCRUM-6").
-            summary:        Short ticket summary for the commit message.
-            workspace_path: Path to the generated workspace directory.
+            ticket_id: The Jira ticket ID (e.g. "SCRUM-6").
+            summary:   Short ticket summary for the commit message.
 
         Returns:
             A GitResult with branch name, commit SHA, and remote URL.
         """
-        workspace = Path(workspace_path).resolve()
+        repo = self._repo
         branch = f"{BRANCH_PREFIX}/{ticket_id}"
 
-        repo = self._repo
-        origin = repo.remote("origin")
+        # Stage everything (new + modified + deleted)
+        repo.git.add(A=True)
 
-        # Ensure we start from a clean, up-to-date base branch
-        base = self._base_branch()
-        logger.info(f"GitTool: checking out '{base}' and pulling latest...")
-        repo.git.checkout(base)
-        origin.pull()
+        if not repo.index.diff("HEAD") and not repo.untracked_files:
+            logger.warning("GitTool: nothing to commit — workspace unchanged.")
+            return GitResult(
+                branch_name=branch,
+                commit_sha=repo.head.commit.hexsha,
+                remote_url=f"https://github.com/{self.repo_owner}/{self.repo_name}",
+            )
 
-        # Create (or reset) the sentinel branch
-        if branch in [b.name for b in repo.branches]:
-            logger.info(f"GitTool: deleting existing branch '{branch}'...")
-            repo.delete_head(branch, force=True)
-        logger.info(f"GitTool: creating branch '{branch}'...")
-        repo.git.checkout("-b", branch)
-
-        # Copy workspace files into the repo
-        dest_dir = self.local_path / ticket_id
-        if dest_dir.exists():
-            shutil.rmtree(dest_dir)
-        shutil.copytree(workspace, dest_dir)
-        logger.info(f"GitTool: copied '{workspace}' → '{dest_dir}'")
-
-        # Stage and commit
-        repo.git.add(str(dest_dir))
         commit_msg = f"feat({ticket_id}): {summary} [ScopeSentinel]"
         commit = repo.index.commit(commit_msg)
         logger.info(f"GitTool: committed '{commit_msg}' ({commit.hexsha[:8]})")
 
-        # Push with token auth
-        push_url = self._authenticated_url()
         logger.info(f"GitTool: pushing '{branch}' to remote...")
-        repo.git.push(push_url, f"{branch}:{branch}", "--force")
-        logger.info(f"GitTool: push complete. ✅")
+        repo.git.push(self._authenticated_url(), f"{branch}:{branch}", "--force")
+        logger.info("GitTool: push complete. ✅")
 
-        # Restore base branch
-        repo.git.checkout(base)
+        # Return to base branch
+        repo.git.checkout(self._base_branch())
 
         return GitResult(
             branch_name=branch,
             commit_sha=commit.hexsha,
             remote_url=f"https://github.com/{self.repo_owner}/{self.repo_name}",
         )
+
+    # ------------------------------------------------------------------ setup
+
+    def _ensure_repo(self) -> Repo:
+        """
+        Return a Repo for self.local_path.
+        Resolution order:
+          1. Valid local git repo     → use as-is
+          2. Exists, not a git repo  → wipe it, re-clone
+          3. Doesn't exist           → clone from GitHub
+          4. Clone 404               → create GitHub repo, then clone
+        """
+        if self.local_path.exists():
+            try:
+                repo = Repo(self.local_path)
+                logger.info("GitTool: existing local repo found — skipping clone.")
+                return repo
+            except InvalidGitRepositoryError:
+                logger.warning(
+                    f"GitTool: '{self.local_path}' exists but is not a valid git repo. "
+                    "Wiping and re-cloning..."
+                )
+                shutil.rmtree(self.local_path)
+
+        self.local_path.mkdir(parents=True, exist_ok=True)
+        return self._clone_or_create()
+
+    def _clone_or_create(self) -> Repo:
+        """Clone from GitHub; if repo not found, create it first."""
+        clone_url = self._authenticated_url()
+        try:
+            logger.info(
+                f"GitTool: cloning {self.repo_owner}/{self.repo_name} "
+                f"→ '{self.local_path}'"
+            )
+            repo = Repo.clone_from(clone_url, self.local_path)
+            logger.info("GitTool: clone complete. ✅")
+            return repo
+        except GitCommandError as e:
+            stderr = str(getattr(e, "stderr", "") or e)
+            if "not found" in stderr.lower():
+                logger.warning(
+                    f"GitTool: '{self.repo_owner}/{self.repo_name}' not found on GitHub. "
+                    "Creating repo now..."
+                )
+                self._create_github_repo()
+                shutil.rmtree(self.local_path)
+                self.local_path.mkdir(parents=True, exist_ok=True)
+                repo = Repo.clone_from(clone_url, self.local_path)
+                logger.info("GitTool: cloned newly created repo. ✅")
+                return repo
+            raise
+
+    def _create_github_repo(self) -> None:
+        """Create the GitHub repo via the API using PyGithub."""
+        from github import Auth
+        gh = Github(auth=Auth.Token(self.token))
+        user = gh.get_user()
+        new_repo = user.create_repo(
+            name=self.repo_name,
+            description=f"Auto-created by ScopeSentinel for {self.repo_name}",
+            private=False,
+            auto_init=True,
+        )
+        logger.info(f"GitTool: GitHub repo created → {new_repo.html_url} ✅")
 
     # ------------------------------------------------------------------ helpers
 

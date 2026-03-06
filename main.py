@@ -88,35 +88,45 @@ async def run_planner_workflow(ticket_id: str) -> None:
                 logger.warning(f"Could not update Jira ticket: {e}")
                 print(f"  ⚠️  Could not update Jira ticket: {e}")
 
-            # --- Step 4: Code Generation + Sandbox Validation (Epic 4.1–4.3) ---
+            # --- Step 4a: Prepare git branch (local repo IS the workspace) ---
+            git = None
+            workspace_path = None
+            try:
+                git = GitTool()
+                workspace_path = git.prepare_branch(ticket_id)
+                print(f"\n  🌿 Branch 'sentinel/{ticket_id}' ready in '{workspace_path}'")
+            except (EnvironmentError, Exception) as e:
+                logger.warning(f"Git setup skipped: {e}")
+                print(f"  ⚠️  Git setup skipped (will use local workspace): {e}")
+
+            # --- Step 4b: Code Generation + Sandbox Validation (Epic 4.1–4.3) ---
             print("\n  🤖 Handing off to Coder Agent...\n")
             coder = CoderAgent(model=model)
-            result = await coder.code_with_validation(ticket, plan)
+            result = await coder.code_with_validation(
+                ticket, plan,
+                workspace_override=workspace_path,   # write into repo dir if available
+            )
 
             if result.files_written:
-                print(f"\n  📁 Code generated in: {result.workspace_path}")
-                print(f"  Files written ({len(result.files_written)}):")
+                print(f"\n  📁 Code written to: {result.workspace_path}")
+                print(f"  Files ({len(result.files_written)}):")
                 for f in result.files_written:
                     print(f"    • {f}")
             else:
-                print("  ⚠️  Coder Agent produced no files. Check the raw LLM response.")
+                print("  ⚠️  Coder Agent produced no files.")
                 logger.debug(result.raw_response)
 
-            # --- Step 5: Git push + GitHub PR (Epic 5) ---
-            print("\n  🌿 Pushing to GitHub...")
+            # --- Step 5: Commit + push + PR (Epic 5) ---
             git_result = None
-            try:
-                git = GitTool()
-                git_result = git.push_workspace(
-                    ticket_id=ticket_id,
-                    summary=ticket.summary,
-                    workspace_path=result.workspace_path,
-                )
-                print(f"  ✅ Branch pushed: {git_result.branch_name}")
-                print(f"     Commit: {git_result.commit_sha[:8]}")
-            except (EnvironmentError, Exception) as e:
-                logger.warning(f"Git push skipped: {e}")
-                print(f"  ⚠️  Git push skipped: {e}")
+            if git:
+                print("\n  🌿 Committing and pushing...")
+                try:
+                    git_result = git.commit_and_push(ticket_id, ticket.summary)
+                    print(f"  ✅ Branch pushed: {git_result.branch_name}")
+                    print(f"     Commit: {git_result.commit_sha[:8]}")
+                except Exception as e:
+                    logger.warning(f"Git push failed: {e}")
+                    print(f"  ⚠️  Git push failed: {e}")
 
             if git_result:
                 print("\n  🔀 Opening Pull Request...")
@@ -128,7 +138,7 @@ async def run_planner_workflow(ticket_id: str) -> None:
                         branch_name=git_result.branch_name,
                     )
                     print(f"  🎉 PR #{pr.pr_number} opened: {pr.pr_url}")
-                except (EnvironmentError, Exception) as e:
+                except Exception as e:
                     logger.warning(f"PR creation skipped: {e}")
                     print(f"  ⚠️  PR creation skipped: {e}")
 

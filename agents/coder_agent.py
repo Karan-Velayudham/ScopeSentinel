@@ -109,18 +109,28 @@ class CoderAgent:
     def __init__(self, model: OpenAIChatModel):
         self.model = model
 
-    async def code(self, ticket: JiraTicket, plan: PlannerOutput) -> CoderOutput:
+    async def code(
+        self,
+        ticket: JiraTicket,
+        plan: PlannerOutput,
+        workspace_override: "Path | str | None" = None,
+    ) -> CoderOutput:
         """
         Generate code for the given ticket and approved plan.
 
         Args:
-            ticket: The original JiraTicket.
-            plan:   The HITL-approved PlannerOutput.
+            ticket:             The original JiraTicket.
+            plan:               The HITL-approved PlannerOutput.
+            workspace_override: If provided, write files here instead of workspace/<id>/.
 
         Returns:
             A CoderOutput describing what was written and where.
         """
-        workspace = WORKSPACE_ROOT / ticket.id
+        workspace = (
+            Path(workspace_override).resolve()
+            if workspace_override
+            else WORKSPACE_ROOT / ticket.id
+        )
         workspace.mkdir(parents=True, exist_ok=True)
         logger.info(f"CoderAgent: workspace at '{workspace}'")
 
@@ -165,6 +175,7 @@ class CoderAgent:
         self,
         ticket: JiraTicket,
         plan: PlannerOutput,
+        workspace_override: "Path | str | None" = None,
     ) -> CoderOutput:
         """
         Generate code, then validate it in a Docker sandbox.
@@ -181,7 +192,7 @@ class CoderAgent:
         from sandbox.sandbox_runner import SandboxRunner
         from sandbox.validator import CodeValidator
 
-        output = await self.code(ticket, plan)
+        output = await self.code(ticket, plan, workspace_override=workspace_override)
         workspace = Path(output.workspace_path)
 
         try:
