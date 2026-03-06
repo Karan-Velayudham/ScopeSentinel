@@ -21,6 +21,7 @@ from agentscope.model import OpenAIChatModel
 
 from tools.jira_tool import JiraTool
 from agents.planner_agent import PlannerAgent
+from agents.coder_agent import CoderAgent
 from hitl.hitl_gateway import HITLGateway
 
 # Configure basic logging
@@ -84,8 +85,20 @@ async def run_planner_workflow(ticket_id: str) -> None:
             except ValueError as e:
                 logger.warning(f"Could not update Jira ticket: {e}")
                 print(f"  ⚠️  Could not update Jira ticket: {e}")
-            print("  🚀 Ready for code generation.")
-            # TODO (Epic 4): hand off to CoderAgent here
+
+            # --- Step 4: Code Generation (Epic 4.1) ---
+            print("\n  🤖 Handing off to Coder Agent...\n")
+            coder = CoderAgent(model=model)
+            result = await coder.code(ticket, plan)
+
+            if result.files_written:
+                print(f"\n  📁 Code generated in: {result.workspace_path}")
+                print(f"  Files written ({len(result.files_written)}):")
+                for f in result.files_written:
+                    print(f"    • {f}")
+            else:
+                print("  ⚠️  Coder Agent produced no files. Check the raw LLM response.")
+                logger.debug(result.raw_response)
             return
 
         elif decision.action == "reject":
