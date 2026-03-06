@@ -1,116 +1,110 @@
+"""
+ScopeSentinel — Main Orchestrator
+
+Runs the end-to-end prototype workflow:
+  1. Fetch a Jira ticket (JiraTool)
+  2. Generate an implementation plan (PlannerAgent)
+
+Usage:
+  python main.py --ticket SCRUM-6
+  python main.py  # runs a quick AgentScope health-check (no Jira needed)
+"""
+
 import os
-from dotenv import load_dotenv
+import asyncio
+import argparse
 import logging
+
+from dotenv import load_dotenv
 import agentscope
-from agentscope.agent import UserAgent, AgentBase
 from agentscope.model import OpenAIChatModel
-from agentscope.message import Msg
+
+from tools.jira_tool import JiraTool
+from agents.planner_agent import PlannerAgent
 
 # Configure basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
-import asyncio
 
-class SimpleAssistant(AgentBase):
-    def __init__(self, name: str, sys_prompt: str, model: OpenAIChatModel):
-        super().__init__()
-        self.name = name
-        self.sys_prompt = sys_prompt
-        self.model = model
-        
-        # In current agentscope version, memory is initialized manually
-        from agentscope.memory import InMemoryMemory
-        from agentscope.message import Msg
-        self.memory = InMemoryMemory()
-        
-        # Adding to memory is async, we'll do this on the first reply if it's empty
-        self._init_memory_done = False
+def _build_model() -> OpenAIChatModel:
+    load_dotenv()
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise EnvironmentError("OPENAI_API_KEY is not set in your .env file.")
+    return OpenAIChatModel(
+        model_name="gpt-4o",
+        api_key=api_key,
+        stream=False,
+    )
 
-    async def reply(self, x: dict = None) -> dict:
-        if not self._init_memory_done:
-            await self.memory.add(Msg(name="system", role="system", content=self.sys_prompt))
-            self._init_memory_done = True
-            
-        if x is not None:
-            await self.memory.add(x)
-            
-        # Format memory for the model
-        messages = await self.memory.get_memory()
-        formatted_messages = [{"role": msg.role, "content": msg.content} for msg in messages]
-        
-        # Call the model
-        response = await self.model(formatted_messages)
-        
-        # Extract text from the ChatResponse content format
-        response_text = ""
-        if hasattr(response, 'content') and isinstance(response.content, list) and len(response.content) > 0:
-            if isinstance(response.content[0], dict) and 'text' in response.content[0]:
-                response_text = response.content[0]['text']
-        
-        msg = Msg(name=self.name, role="assistant", content=response_text or str(response))
-        await self.memory.add(msg)
-        return msg
 
-async def main():
-    try:
-        # Load environment variables
-        load_dotenv()
-        
-        # Check for required API Key (basic validation)
-        if not os.environ.get("OPENAI_API_KEY"):
-             logger.warning("OPENAI_API_KEY not found in environment. Please set it or use .env file.")
-             logger.warning("AgentScope initialization may fail if the model requires it.")
+async def run_planner_workflow(ticket_id: str) -> None:
+    """Full Epic 2 workflow: fetch Jira ticket → generate plan."""
+    logger.info("Initializing AgentScope...")
+    agentscope.init(project="ScopeSentinel", name="PlannerRun")
 
-        # Initialize the Model
-        logger.info("Initializing Model...")
-        model = OpenAIChatModel(
-            model_name="gpt-4o",
-            api_key=os.environ.get("OPENAI_API_KEY"),
-            stream=False # Explicitly disable streaming for the basic test
-        )
+    model = _build_model()
+    logger.info("Model initialized.")
 
-        logger.info("Model initialized successfully.")
+    # --- Step 1: Fetch ticket ---
+    jira = JiraTool()
+    ticket = jira.fetch_ticket(ticket_id)
 
-        # Initialize AgentScope
-        logger.info("Initializing AgentScope...")
-        agentscope.init(
-            project="ScopeSentinel",
-            name="Prototype_Run"
-        )
-        logger.info("AgentScope initialized successfully.")
+    print("\n" + "=" * 60)
+    print(f"  Ticket  : {ticket.id}  [{ticket.issue_type}]  — {ticket.status}")
+    print(f"  Summary : {ticket.summary}")
+    if ticket.acceptance_criteria:
+        print(f"  AC      : {ticket.acceptance_criteria[:120]}{'…' if len(ticket.acceptance_criteria) > 120 else ''}")
+    print("=" * 60)
 
-        # Set up a simple two-agent conversation to verify it works
-        
-        # 1. User Agent (represents the human or system input)
-        user_agent = UserAgent(
-             name="User"
-        )
-        
-        # 2. Assistant Agent (the simple planner/assistant)
-        assistant_agent = SimpleAssistant(
-            name="Assistant",
-            sys_prompt="You are a helpful AI assistant for the ScopeSentinel platform.",
-            model=model
-        )
-        
-        # Initiate a test conversation
-        logger.info("Starting test conversation...")
-        
-        # We simulate a user input here instead of prompting for one, to let the test run automatically
-        test_msg = Msg(name="User", role="user", content="Hello! Are you ready to help build ScopeSentinel?")
-        
-        logger.info(f"User says: {test_msg.content}")
+    # --- Step 2: Generate plan ---
+    planner = PlannerAgent(model=model)
+    plan = await planner.plan(ticket)
 
-        # Get response from the assistant
-        response_msg = await assistant_agent(test_msg)
-        
-        logger.info(f"Assistant replied: {response_msg.content}")
-        logger.info("Prototype workflow orchestrator test completed successfully.")
+    print("\n📐 Architecture Notes")
+    print(f"  {plan.architecture_notes or '(none)'}\n")
 
-    except Exception as e:
-        logger.error(f"An error occurred during execution: {e}", exc_info=True)
+    print("📋 Implementation Steps")
+    for i, step in enumerate(plan.steps, start=1):
+        print(f"  {i}. {step}")
+
+    if not plan.steps:
+        print("  (No steps parsed — raw plan below)")
+        print(plan.raw_plan)
+
+    print()
+
+
+async def run_healthcheck() -> None:
+    """Quick smoke-test: verify AgentScope + OpenAI are wired correctly."""
+    logger.info("Running health check (no Jira ticket provided)...")
+    agentscope.init(project="ScopeSentinel", name="HealthCheck")
+    model = _build_model()
+
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Respond with exactly: 'ScopeSentinel is ready.'"},
+    ]
+    response = await model(messages)
+    text = ""
+    if hasattr(response, "content") and isinstance(response.content, list):
+        for block in response.content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block["text"]
+                break
+    print(f"\n✅ Health check passed: {text.strip()}\n")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="ScopeSentinel Orchestrator")
+    parser.add_argument("--ticket", help="Jira ticket ID to plan (e.g. SCRUM-6)", default=None)
+    args = parser.parse_args()
+
+    if args.ticket:
+        asyncio.run(run_planner_workflow(args.ticket))
+    else:
+        asyncio.run(run_healthcheck())

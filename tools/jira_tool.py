@@ -93,9 +93,10 @@ class JiraTool:
         for field_name in self.ACCEPTANCE_CRITERIA_FIELDS:
             value = getattr(fields, field_name, None)
             if value:
-                acceptance_criteria = str(value)
-                logger.info(f"Found acceptance criteria in field: {field_name}")
-                break
+                acceptance_criteria = self._serialize_field(value)
+                if acceptance_criteria:
+                    logger.info(f"Found acceptance criteria in field: {field_name}")
+                    break
 
         # Fallback: look for an 'Acceptance Criteria' section in the description
         if not acceptance_criteria:
@@ -109,6 +110,34 @@ class JiraTool:
             status=str(fields.status),
             issue_type=str(fields.issuetype),
         )
+
+    @staticmethod
+    def _serialize_field(value) -> str:
+        """
+        Safely serialize Jira field values that may be PropertyHolder objects,
+        lists, or plain strings into a human-readable string.
+        """
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            parts = []
+            for item in value:
+                serialized = JiraTool._serialize_field(item)
+                if serialized:
+                    parts.append(serialized)
+            return "\n".join(parts)
+        # Handle Jira PropertyHolder objects — try common text fields
+        for attr in ("description", "name", "value", "text", "content"):
+            v = getattr(value, attr, None)
+            if v and isinstance(v, str):
+                return v
+        # Last resort: repr without class noise
+        raw = str(value)
+        if "object at 0x" in raw:
+            return ""  # unintelligible object reference, discard
+        return raw
 
     def _extract_ac_from_description(self, description: str) -> str:
         """
