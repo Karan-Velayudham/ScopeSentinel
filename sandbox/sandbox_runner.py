@@ -45,12 +45,14 @@ class SandboxRunner:
     directory mounted at /workspace.
     """
 
+    CLIENT_TIMEOUT = 120  # seconds for Docker API calls
+
     def __init__(self, workspace_path: str | Path):
         self.workspace_path = Path(workspace_path).resolve()
         self.image = os.environ.get("SANDBOX_IMAGE", DEFAULT_IMAGE)
 
         try:
-            self._client = docker.from_env()
+            self._client = docker.from_env(timeout=self.CLIENT_TIMEOUT)
             self._client.ping()
             logger.info("SandboxRunner: Docker daemon connected.")
         except DockerException as e:
@@ -85,10 +87,9 @@ class SandboxRunner:
                 command=["sh", "-c", command],
                 volumes=volume_mount,
                 working_dir=CONTAINER_WORKDIR,
-                remove=True,            # auto-remove container on exit
+                remove=True,
                 stdout=True,
                 stderr=True,
-                timeout=timeout,
             )
             stdout = result.decode("utf-8", errors="replace") if result else ""
             return SandboxResult(exit_code=0, stdout=stdout, stderr="")
