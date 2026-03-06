@@ -7,6 +7,7 @@ then parses the response and writes each file to a local workspace directory.
 
 import os
 import re
+import shutil
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,27 +27,29 @@ You are an expert software engineer implementing code for ScopeSentinel, \
 an autonomous software delivery platform.
 
 You will be given a Jira ticket summary and an approved implementation plan. \
-Your job is to write ALL the code needed to implement it completely.
+Your job is to implement it completely.
 
 CRITICAL output format rules:
-1. For every file you create, start with a line like:
+1. To CREATE or MODIFY a file:
    ### `relative/path/to/file.ext`
    Then immediately follow with a fenced code block containing the FULL file contents.
-2. Never abbreviate code with comments like "# ... rest of code". Always write the complete file.
-3. Include a `README.md` as the last file, summarizing what was built and how to run it.
-4. Do not include any explanation text outside of the file blocks.
+2. To DELETE a file or directory:
+   ### DELETE `relative/path/to/delete`
+   (no code block needed — just this one line)
+3. Never abbreviate code with "# ... rest of code". Always write the complete file.
+4. Include a `README.md` summarizing what was built/changed.
+5. Do not include explanation text outside the file/delete blocks.
 
 Example:
+### DELETE `old_folder/`
 ### `src/main.py`
 ```python
 def hello():
     print("Hello!")
 ```
-
 ### `README.md`
 ```markdown
 # My Project
-...
 ```
 """
 
@@ -64,31 +67,30 @@ def _build_coding_prompt(ticket: JiraTicket, plan: PlannerOutput) -> str:
 def _parse_files(raw: str) -> dict[str, str]:
     """
     Parse the LLM response into {relative_path: file_content} mapping.
-
-    Looks for blocks of the form:
-        ### `path/to/file.ext`
-        ```[lang]
-        <content>
-        ```
+    Looks for: ### `filepath` followed by a fenced code block.
     """
     files: dict[str, str] = {}
-
-    # Pattern: ### `filepath`  (optional whitespace) ``` [lang] \n content \n ```
     pattern = re.compile(
-        r"###\s+`([^`]+)`\s*\n"       # ### `filepath`
-        r"```[^\n]*\n"                  # ``` or ```python etc.
-        r"(.*?)"                        # file content (non-greedy)
-        r"```",                         # closing ```
+        r"###\s+`([^`]+)`\s*\n"
+        r"```[^\n]*\n"
+        r"(.*?)"
+        r"```",
         re.DOTALL
     )
-
     for match in pattern.finditer(raw):
         filepath = match.group(1).strip()
         content  = match.group(2)
-        # Normalise — remove leading/trailing blank lines but keep internal ones
         files[filepath] = content.strip("\n") + "\n"
-
     return files
+
+
+def _parse_deletions(raw: str) -> list[str]:
+    """
+    Parse ### DELETE `path` lines from the LLM response.
+    Returns a list of relative paths to delete.
+    """
+    pattern = re.compile(r"###\s+DELETE\s+`([^`]+)`", re.IGNORECASE)
+    return [m.group(1).strip() for m in pattern.finditer(raw)]
 
 
 @dataclass
@@ -152,11 +154,26 @@ class CoderAgent:
             raw = str(response)
 
         files = _parse_files(raw)
+        deletions = _parse_deletions(raw)
 
-        if not files:
-            logger.warning("CoderAgent: no file blocks found in LLM response.")
+        if not files and not deletions:
+            logger.warning("CoderAgent: no file or delete blocks found in LLM response.")
 
+        # Process deletions first
         files_written: list[str] = []
+        for rel_path in deletions:
+            target = workspace / rel_path
+            if target.exists():
+                if target.is_dir():
+                    shutil.rmtree(target)
+                    logger.info(f"  🗑️  Deleted dir : {target}")
+                else:
+                    target.unlink()
+                    logger.info(f"  🗑️  Deleted file: {target}")
+            else:
+                logger.warning(f"  ⚠️  DELETE target not found: {target}")
+
+        # Write / overwrite files
         for rel_path, content in files.items():
             dest = workspace / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)

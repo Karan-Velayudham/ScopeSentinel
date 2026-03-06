@@ -74,7 +74,8 @@ class GithubTool:
                 "and GITHUB_REPO_NAME in your .env file."
             )
 
-        self._client = Github(self.token)
+        from github import Auth
+        self._client = Github(auth=Auth.Token(self.token))
         self._gh_repo = self._client.get_repo(f"{self.repo_owner}/{self.repo_name}")
         logger.info(f"GithubTool: connected to {self.repo_owner}/{self.repo_name}")
 
