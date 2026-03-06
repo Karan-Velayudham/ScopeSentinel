@@ -145,3 +145,59 @@ class PlannerAgent:
             architecture_notes=architecture_notes,
             raw_plan=raw_plan,
         )
+
+    async def replan(
+        self,
+        ticket: JiraTicket,
+        feedback: str,
+        previous_plan: PlannerOutput,
+    ) -> PlannerOutput:
+        """
+        Generate a revised plan based on human feedback.
+
+        Args:
+            ticket:        The original JiraTicket.
+            feedback:      The reviewer's feedback string.
+            previous_plan: The PlannerOutput that was rejected.
+
+        Returns:
+            A new PlannerOutput incorporating the feedback.
+        """
+        logger.info(f"PlannerAgent: replanning {ticket.id} with feedback: '{feedback}'")
+
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": _build_user_message(ticket)},
+            {"role": "assistant", "content": previous_plan.raw_plan},
+            {
+                "role": "user",
+                "content": (
+                    f"The plan above was reviewed by a human. Their feedback is:\n\n"
+                    f"\"{feedback}\"\n\n"
+                    f"Please revise the plan to address this feedback. "
+                    f"Keep the same output format."
+                ),
+            },
+        ]
+
+        response = await self.model(messages)
+
+        raw_plan = ""
+        if hasattr(response, "content") and isinstance(response.content, list):
+            for block in response.content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    raw_plan = block["text"]
+                    break
+        if not raw_plan:
+            raw_plan = str(response)
+
+        steps, architecture_notes = _parse_plan(raw_plan)
+        logger.info(f"PlannerAgent: revised plan has {len(steps)} steps.")
+
+        return PlannerOutput(
+            ticket_id=ticket.id,
+            summary=ticket.summary,
+            steps=steps,
+            architecture_notes=architecture_notes,
+            raw_plan=raw_plan,
+        )

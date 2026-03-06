@@ -21,6 +21,7 @@ from agentscope.model import OpenAIChatModel
 
 from tools.jira_tool import JiraTool
 from agents.planner_agent import PlannerAgent
+from hitl.hitl_gateway import HITLGateway
 
 # Configure basic logging
 logging.basicConfig(
@@ -42,8 +43,11 @@ def _build_model() -> OpenAIChatModel:
     )
 
 
+MAX_REVISIONS = 3
+
+
 async def run_planner_workflow(ticket_id: str) -> None:
-    """Full Epic 2 workflow: fetch Jira ticket → generate plan."""
+    """Full Epic 2+3 workflow: fetch Jira ticket → generate plan → HITL gate."""
     logger.info("Initializing AgentScope...")
     agentscope.init(project="ScopeSentinel", name="PlannerRun")
 
@@ -58,25 +62,34 @@ async def run_planner_workflow(ticket_id: str) -> None:
     print(f"  Ticket  : {ticket.id}  [{ticket.issue_type}]  — {ticket.status}")
     print(f"  Summary : {ticket.summary}")
     if ticket.acceptance_criteria:
-        print(f"  AC      : {ticket.acceptance_criteria[:120]}{'…' if len(ticket.acceptance_criteria) > 120 else ''}")
+        print(f"  AC      : {ticket.acceptance_criteria[:120]}"
+              f"{'…' if len(ticket.acceptance_criteria) > 120 else ''}")
     print("=" * 60)
 
     # --- Step 2: Generate plan ---
     planner = PlannerAgent(model=model)
+    hitl = HITLGateway()
+
     plan = await planner.plan(ticket)
 
-    print("\n📐 Architecture Notes")
-    print(f"  {plan.architecture_notes or '(none)'}\n")
+    # --- Step 3: HITL approval loop (Story 3.2) ---
+    for revision in range(MAX_REVISIONS + 1):
+        decision = await hitl.present_and_await(plan)
 
-    print("📋 Implementation Steps")
-    for i, step in enumerate(plan.steps, start=1):
-        print(f"  {i}. {step}")
+        if decision.action == "approve":
+            print(f"  ✅ Plan approved after {revision} revision(s). Ready for code generation.")
+            # TODO (Epic 4): hand off to CoderAgent here
+            return
 
-    if not plan.steps:
-        print("  (No steps parsed — raw plan below)")
-        print(plan.raw_plan)
+        elif decision.action == "reject":
+            print(f"  ❌ Workflow aborted by reviewer for ticket {ticket_id}.")
+            return
 
-    print()
+        elif decision.action == "modify":
+            if revision >= MAX_REVISIONS:
+                print(f"\n  ⚠️  Maximum revisions ({MAX_REVISIONS}) reached. Aborting.")
+                return
+            plan = await planner.replan(ticket, decision.feedback, plan)
 
 
 async def run_healthcheck() -> None:
