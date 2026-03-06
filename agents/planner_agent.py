@@ -5,13 +5,12 @@ Uses the OpenAI model to break down the ticket's summary, description,
 and acceptance criteria into an actionable development plan with architectural notes.
 """
 
-import asyncio
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any, Callable
 
 from agentscope.model import OpenAIChatModel
-from agentscope.mcp import StdIOStatefulClient
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +52,15 @@ Rules:
 def _build_user_message(ticket_content: str) -> str:
     return f"**Here is the Jira Ticket fetched via MCP Tools:**\n\n{ticket_content}"
 
+
+def _extract_text(response: Any) -> str:
+    """Extract a plain-text string from an AgentScope model response."""
+    if hasattr(response, "content") and isinstance(response.content, list):
+        for block in response.content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                return block["text"]
+    return str(response)
+
 def _parse_plan(raw: str) -> tuple[list[str], str]:
     """
     Parse the LLM response into (steps, architecture_notes).
@@ -87,33 +95,37 @@ def _parse_plan(raw: str) -> tuple[list[str], str]:
 
 class PlannerAgent:
     """
-    An agent that analyzes a JiraTicket and produces a PlannerOutput
+    An agent that analyzes a Jira ticket and produces a PlannerOutput
     using an LLM to break down the work into concrete implementation steps.
+
+    Accepts a ``tool_registry`` — a flat dict of ``{tool_name: async callable}``
+    supplied by ``mcp_pool.load_client_pool()``.  This makes the agent
+    agnostic to which MCP server provides each tool.
     """
 
     def __init__(self, model: OpenAIChatModel):
         self.model = model
 
-    async def plan(self, ticket_id: str, mcp_client: StdIOStatefulClient) -> PlannerOutput:
+    async def plan(
+        self,
+        ticket_id: str,
+        tool_registry: dict[str, Callable[..., Any]],
+    ) -> PlannerOutput:
         """
         Generate an implementation plan for the given Jira ticket.
 
         Args:
-            ticket_id: The ID of the Jira ticket.
-            mcp_client: The MCP client to fetch ticket context with.
+            ticket_id:     The ID of the Jira ticket.
+            tool_registry: Flat dict of MCP tool callables from the pool.
 
         Returns:
             A PlannerOutput with parsed steps and architecture notes.
         """
-        logger.info(f"PlannerAgent: fetching and planning {ticket_id}")
+        logger.info("PlannerAgent: fetching and planning %s", ticket_id)
 
-        # Use MCP to fetch the ticket
-        fetch_func = await mcp_client.get_callable_function("fetch_jira_ticket")
+        fetch_func = tool_registry["fetch_jira_ticket"]
         res = await fetch_func(ticket_id=ticket_id)
-        if hasattr(res, 'content'): # Handle AgentScope ToolResponse
-            ticket_content = res.content[0]['text']
-        else:
-            ticket_content = str(res)
+        ticket_content = res.content[0]["text"] if hasattr(res, "content") else str(res)
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -121,20 +133,10 @@ class PlannerAgent:
         ]
 
         response = await self.model(messages)
-
-        # Extract text from ChatResponse
-        raw_plan = ""
-        if hasattr(response, "content") and isinstance(response.content, list):
-            for block in response.content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    raw_plan = block["text"]
-                    break
-        if not raw_plan:
-            raw_plan = str(response)
+        raw_plan = _extract_text(response)
 
         steps, architecture_notes = _parse_plan(raw_plan)
-
-        logger.info(f"PlannerAgent: produced {len(steps)} implementation steps.")
+        logger.info("PlannerAgent: produced %d implementation steps.", len(steps))
 
         return PlannerOutput(
             ticket_id=ticket_id,
@@ -147,7 +149,7 @@ class PlannerAgent:
     async def replan(
         self,
         ticket_id: str,
-        mcp_client: StdIOStatefulClient,
+        tool_registry: dict[str, Callable[..., Any]],
         feedback: str,
         previous_plan: PlannerOutput,
     ) -> PlannerOutput:
@@ -156,22 +158,18 @@ class PlannerAgent:
 
         Args:
             ticket_id:     The ID of the Jira ticket.
-            mcp_client:    The MCP client to fetch ticket context with.
+            tool_registry: Flat dict of MCP tool callables from the pool.
             feedback:      The reviewer's feedback string.
             previous_plan: The PlannerOutput that was rejected.
 
         Returns:
             A new PlannerOutput incorporating the feedback.
         """
-        logger.info(f"PlannerAgent: replanning {ticket_id} with feedback: '{feedback}'")
+        logger.info("PlannerAgent: replanning %s with feedback: '%s'", ticket_id, feedback)
 
-        # Use MCP to fetch the ticket
-        fetch_func = await mcp_client.get_callable_function("fetch_jira_ticket")
+        fetch_func = tool_registry["fetch_jira_ticket"]
         res = await fetch_func(ticket_id=ticket_id)
-        if hasattr(res, 'content'):
-            ticket_content = res.content[0]['text']
-        else:
-            ticket_content = str(res)
+        ticket_content = res.content[0]["text"] if hasattr(res, "content") else str(res)
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -189,18 +187,10 @@ class PlannerAgent:
         ]
 
         response = await self.model(messages)
-
-        raw_plan = ""
-        if hasattr(response, "content") and isinstance(response.content, list):
-            for block in response.content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    raw_plan = block["text"]
-                    break
-        if not raw_plan:
-            raw_plan = str(response)
+        raw_plan = _extract_text(response)
 
         steps, architecture_notes = _parse_plan(raw_plan)
-        logger.info(f"PlannerAgent: revised plan has {len(steps)} steps.")
+        logger.info("PlannerAgent: revised plan has %d steps.", len(steps))
 
         return PlannerOutput(
             ticket_id=ticket_id,

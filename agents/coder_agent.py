@@ -11,11 +11,11 @@ import shutil
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Callable
 
 from agentscope.model import OpenAIChatModel
-from agentscope.mcp import StdIOStatefulClient
 
-from agents.planner_agent import PlannerOutput
+from agents.planner_agent import PlannerOutput, _extract_text
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,6 @@ def _build_coding_prompt(ticket_id: str, ticket_content: str, plan: PlannerOutpu
         f"**Implementation Steps:**\n{steps_text}\n\n"
         "Now implement ALL of the above steps as complete, runnable code files."
     )
-
 
 def _parse_files(raw: str) -> dict[str, str]:
     """
@@ -196,18 +195,19 @@ class CoderAgent:
         ticket_id: str,
         ticket_content: str,
         plan: PlannerOutput,
-        mcp_client: StdIOStatefulClient,
+        tool_registry: dict[str, Callable[..., Any]],
     ) -> CoderOutput:
         """
         Generate code, then validate it in a Docker sandbox.
         If validation fails, feed errors back to the LLM and retry.
-        Also uses MCP tools to prepare git branch, commit, push, and PR.
+        Also uses tools from the registry to prepare a git branch, commit,
+        push, and create a PR.
 
         Args:
             ticket_id:      The original Jira ticket ID.
-            ticket_content: The formatted jira ticket content fetched from MCP.
+            ticket_content: The formatted Jira ticket content fetched from MCP.
             plan:           The HITL-approved PlannerOutput.
-            mcp_client:     The MCP client to interact with Git and Github tools.
+            tool_registry:  Flat dict of MCP tool callables from the pool.
 
         Returns:
             The final CoderOutput (after self-correction if needed).
@@ -215,22 +215,17 @@ class CoderAgent:
         from sandbox.sandbox_runner import SandboxRunner
         from sandbox.validator import CodeValidator
 
-        # 1. Prepare Git Branch via MCP
+        # 1. Prepare Git Branch via tool registry
         workspace_path = None
         try:
-            prep_func = await mcp_client.get_callable_function("prepare_git_branch")
+            prep_func = tool_registry["prepare_git_branch"]
             res = await prep_func(ticket_id=ticket_id)
-            if hasattr(res, 'content'):
-                res_text = res.content[0]['text']
-            else:
-                res_text = str(res)
-            
-            # Very basic extraction: "Branch prepared at /path"
+            res_text = res.content[0]["text"] if hasattr(res, "content") else str(res)
             if " at " in res_text:
                 workspace_path = res_text.split(" at ")[-1].strip()
-            logger.info(f"CoderAgent: MCP prepare_git_branch returned: {res_text}")
+            logger.info("CoderAgent: prepare_git_branch returned: %s", res_text)
         except Exception as e:
-            logger.warning(f"CoderAgent: Failed to prepare branch via MCP: {e}")
+            logger.warning("CoderAgent: failed to prepare branch via tool_registry: %s", e)
 
         # 2. Code and Validate
         output = await self.code(ticket_id, ticket_content, plan, workspace_override=workspace_path)
@@ -307,17 +302,21 @@ class CoderAgent:
                     raw_response=raw,
                 )
 
-        # 3. Commit, Push, and Create PR via MCP
+        # 3. Commit, Push, and Create PR via tool registry
         if workspace_path is not None:
             try:
-                commit_func = await mcp_client.get_callable_function("commit_and_push")
+                commit_func = tool_registry["commit_and_push"]
                 res = await commit_func(ticket_id=ticket_id, summary=plan.summary)
-                logger.info(f"CoderAgent: Commit and push returned: {res}")
+                logger.info("CoderAgent: commit_and_push returned: %s", res)
 
-                pr_func = await mcp_client.get_callable_function("create_pull_request")
-                res = await pr_func(ticket_id=ticket_id, plan=plan.raw_plan, branch_name=f"sentinel/{ticket_id}")
-                logger.info(f"CoderAgent: Create PR returned: {res}")
+                pr_func = tool_registry["create_pull_request"]
+                res = await pr_func(
+                    ticket_id=ticket_id,
+                    plan=plan.raw_plan,
+                    branch_name=f"sentinel/{ticket_id}",
+                )
+                logger.info("CoderAgent: create_pull_request returned: %s", res)
             except Exception as e:
-                logger.warning(f"CoderAgent: Failed to finalize PR via MCP: {e}")
+                logger.warning("CoderAgent: failed to finalize PR via tool_registry: %s", e)
 
         return output

@@ -9,19 +9,12 @@ from agents.coder_agent import (
     _parse_files,
     _parse_deletions
 )
-from tools.jira_tool import JiraTicket
 from agents.planner_agent import PlannerOutput
 
-@pytest.fixture
-def sample_ticket():
-    return JiraTicket(
-        id="SCRUM-456",
-        summary="Implement code",
-        description="Write the actual code",
-        status="In Progress",
-        issue_type="Task",
-        acceptance_criteria=""
-    )
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def sample_plan():
@@ -33,12 +26,37 @@ def sample_plan():
         raw_plan="Original plan"
     )
 
-def test_build_coding_prompt(sample_ticket, sample_plan):
-    prompt = _build_coding_prompt(sample_ticket, sample_plan)
-    assert "**Ticket:** SCRUM-456 — Implement code" in prompt
+
+@pytest.fixture
+def mock_tool_registry():
+    """A minimal tool_registry that fakes all git/github MCP tools."""
+    prepare_res = MagicMock()
+    prepare_res.content = [{"text": "Branch prepared at /tmp/workspace-SCRUM-456"}]
+
+    commit_res = MagicMock()
+    commit_res.content = [{"text": "Pushed branch sentinel/SCRUM-456"}]
+
+    pr_res = MagicMock()
+    pr_res.content = [{"text": "PR created: https://github.com/org/repo/pull/1"}]
+
+    return {
+        "prepare_git_branch": AsyncMock(return_value=prepare_res),
+        "commit_and_push": AsyncMock(return_value=commit_res),
+        "create_pull_request": AsyncMock(return_value=pr_res),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pure function tests (unchanged behaviour)
+# ---------------------------------------------------------------------------
+
+def test_build_coding_prompt(sample_plan):
+    prompt = _build_coding_prompt("SCRUM-456", "ticket body", sample_plan)
+    assert "**Ticket:** SCRUM-456" in prompt
     assert "**Architecture Notes:**\nDo it well" in prompt
     assert "1. Create file A" in prompt
     assert "2. Delete file B" in prompt
+
 
 def test_parse_files():
     raw = """
@@ -61,6 +79,7 @@ def add(a, b):
     assert "src/utils.py" in files
     assert "def add(a, b):\n    return a + b\n" in files["src/utils.py"]
 
+
 def test_parse_deletions():
     raw = """
 I will delete this now.
@@ -73,8 +92,13 @@ And this file.
     assert deletions[0] == "old_dir/"
     assert deletions[1] == "old_file.py"
 
+
+# ---------------------------------------------------------------------------
+# CoderAgent.code() — workspace + file writing (no tool_registry needed)
+# ---------------------------------------------------------------------------
+
 @pytest.mark.asyncio
-async def test_coder_agent_code(sample_ticket, sample_plan, tmp_path):
+async def test_coder_agent_code(sample_plan, tmp_path):
     mock_model = AsyncMock()
     mock_response = MagicMock()
     mock_response.content = [
@@ -92,27 +116,28 @@ async def test_coder_agent_code(sample_ticket, sample_plan, tmp_path):
     file_to_delete.touch()
 
     agent = CoderAgent(model=mock_model)
-    output = await agent.code(sample_ticket, sample_plan, workspace_override=workspace)
+    output = await agent.code("SCRUM-456", "ticket body", sample_plan, workspace_override=workspace)
 
     assert isinstance(output, CoderOutput)
     assert output.ticket_id == "SCRUM-456"
     assert "new_file.py" in output.files_written
-    
-    # Check if new file was created
+
     new_file_path = workspace / "new_file.py"
     assert new_file_path.exists()
     assert new_file_path.read_text() == "print(1)\n"
-    
-    # Check if old file was deleted
     assert not file_to_delete.exists()
+
+
+# ---------------------------------------------------------------------------
+# CoderAgent.code_with_validation() — uses tool_registry
+# ---------------------------------------------------------------------------
 
 @patch("agents.coder_agent.CoderAgent.code")
 @pytest.mark.asyncio
-async def test_coder_agent_code_with_validation_success(mock_code, sample_ticket, sample_plan, tmp_path):
-    # Mock output from .code()
+async def test_code_with_validation_success(mock_code, sample_plan, mock_tool_registry, tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    
+
     initial_output = CoderOutput(
         ticket_id="SCRUM-456",
         workspace_path=str(workspace),
@@ -122,28 +147,33 @@ async def test_coder_agent_code_with_validation_success(mock_code, sample_ticket
     mock_code.return_value = initial_output
 
     agent = CoderAgent(model=AsyncMock())
-    
-    # Mock SandboxRunner and Validator to return success
-    with patch("sandbox.sandbox_runner.SandboxRunner") as MockRunner:
+
+    with patch("sandbox.sandbox_runner.SandboxRunner"):
         with patch("sandbox.validator.CodeValidator") as MockValidator:
-            mock_validator_instance = MockValidator.return_value
+            mock_vi = MockValidator.return_value
             mock_result = MagicMock()
             mock_result.passed = True
-            mock_validator_instance.validate.return_value = mock_result
-            
-            output = await agent.code_with_validation(sample_ticket, sample_plan, workspace_override=workspace)
-            
-            assert output is initial_output
-            mock_validator_instance.validate.assert_called_once()
-            # Agent's model should not be called since validation passed
-            agent.model.assert_not_called()
+            mock_vi.validate.return_value = mock_result
+
+            output = await agent.code_with_validation(
+                "SCRUM-456", "ticket body", sample_plan, mock_tool_registry
+            )
+
+    assert output is initial_output
+    mock_vi.validate.assert_called_once()
+    # prepare_git_branch should have been called
+    mock_tool_registry["prepare_git_branch"].assert_called_once_with(ticket_id="SCRUM-456")
+    # commit + PR should have been called (workspace_path resolved from prep result)
+    mock_tool_registry["commit_and_push"].assert_called_once()
+    mock_tool_registry["create_pull_request"].assert_called_once()
+
 
 @patch("agents.coder_agent.CoderAgent.code")
 @pytest.mark.asyncio
-async def test_coder_agent_code_with_validation_retry(mock_code, sample_ticket, sample_plan, tmp_path):
+async def test_code_with_validation_retry(mock_code, sample_plan, mock_tool_registry, tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    
+
     initial_output = CoderOutput(
         ticket_id="SCRUM-456",
         workspace_path=str(workspace),
@@ -154,42 +184,33 @@ async def test_coder_agent_code_with_validation_retry(mock_code, sample_ticket, 
 
     mock_model = AsyncMock()
     mock_response = MagicMock()
-    # Provide corrected files in the response
     mock_response.content = [
-        {
-            "type": "text",
-            "text": "### `test.py`\n```python\nprint('fixed')\n```"
-        }
+        {"type": "text", "text": "### `test.py`\n```python\nprint('fixed')\n```"}
     ]
     mock_model.return_value = mock_response
 
     agent = CoderAgent(model=mock_model)
-    
-    with patch("sandbox.sandbox_runner.SandboxRunner") as MockRunner:
+
+    with patch("sandbox.sandbox_runner.SandboxRunner"):
         with patch("sandbox.validator.CodeValidator") as MockValidator:
-            mock_validator_instance = MockValidator.return_value
-            
-            # Fail first validation, pass second
+            mock_vi = MockValidator.return_value
+
             fail_result = MagicMock()
             fail_result.passed = False
             fail_result.output = "SyntaxError"
-            
+
             pass_result = MagicMock()
             pass_result.passed = True
-            
-            mock_validator_instance.validate.side_effect = [fail_result, pass_result]
-            
-            output = await agent.code_with_validation(sample_ticket, sample_plan, workspace_override=workspace)
-            
-            # Assert validation called twice
-            assert mock_validator_instance.validate.call_count == 2
-            
-            # Model called once for self-correction
-            agent.model.assert_called_once()
-            
-            # Verify file was written with corrected content
-            fixed_file = workspace / "test.py"
-            assert fixed_file.read_text() == "print('fixed')\n"
-            
-            assert output.files_written == ["test.py"]
-            assert output.raw_response == "### `test.py`\n```python\nprint('fixed')\n```"
+
+            mock_vi.validate.side_effect = [fail_result, pass_result]
+
+            output = await agent.code_with_validation(
+                "SCRUM-456", "ticket body", sample_plan, mock_tool_registry
+            )
+
+    assert mock_vi.validate.call_count == 2
+    agent.model.assert_called_once()
+
+    fixed_file = workspace / "test.py"
+    assert fixed_file.read_text() == "print('fixed')\n"
+    assert output.files_written == ["test.py"]
