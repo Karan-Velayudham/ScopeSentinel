@@ -9,7 +9,7 @@ This document outlines the stories and epics to build the initial prototype of S
 
 ## Epic 2: Ticket Ingestion & Planning
 **Description:** Read the user request from a Jira ticket and create a concrete implementation plan.
-* **Story 2.1: Jira API Integration.** Create a basic tool/service to fetch a Jira ticket's description and acceptance criteria given a ticket ID.
+* **Story 2.1: Jira MCP Integration.** Integrate a Jira MCP server to fetch a Jira ticket's description and acceptance criteria given a ticket ID.
 * **Story 2.2: The Planner Agent.** Configure an AgentScope agent responsible for analyzing the Jira ticket and breaking it down into a step-by-step implementation plan and architectural approach.
 
 ## Epic 3: HITL Approval Gateway
@@ -25,5 +25,30 @@ This document outlines the stories and epics to build the initial prototype of S
 
 ## Epic 5: Review & Pull Request Creation
 **Description:** Finalize the workflow by pushing the generated code to the repository and creating a Pull Request.
-* **Story 5.1: Git Operations Tool.** Implement a tool to commit the generated code and push it to a new branch (e.g., `sentinel/JIRA-123`).
-* **Story 5.2: GitHub PR Integration.** Create a tool to open a Pull Request against the main branch, using the Jira ticket and implementation details as the PR description.
+* **Story 5.1: Git MCP Integration.** Integrate a Git MCP server (or custom Git Tool) to commit the generated code and push it to a new branch (e.g., `sentinel/JIRA-123`).
+* **Story 5.2: GitHub MCP Integration.** Integrate a GitHub MCP server to open a Pull Request against the main branch, using the Jira ticket and implementation details as the PR description.
+
+## Epic 6: API Control Plane & Integration
+**Description:** Transition the orchestrator from a CLI script to a robust FastAPI service, enabling webhook triggers and external API access.
+* **Story 6.1: FastAPI Server Setup.** Implement a FastAPI web server to expose endpoints for triggering and monitoring agentic workflows.
+* **Story 6.2: Webhook Handlers.** Add support for inbound webhooks (e.g., Jira transitions, GitHub push events) to automatically kick off tasks.
+
+## Epic 7: The Knowledge Layer & RAG Integration
+**Description:** Implement context retrieval for Mode A (Brownfield) repositories using a vector database.
+* **Story 7.1: Vector DB Setup.** Integrate Qdrant or Milvus into the project stack (e.g., via Docker Compose).
+* **Story 7.2: Repository Indexing (SimpleKnowledge).** Create a flow to ingest, chunk, and index existing codebase repositories so agents can search and understand legacy context.
+
+## Epic 8: Enhanced Sandbox Isolation
+**Description:** Move beyond basic local directories to true security boundaries using Docker or gVisor for agent execution.
+* **Story 8.1: Ephemeral Containers.** Update the Sandbox execution logic to spin up isolated, ephemeral Docker containers for every code generation/validation step.
+* **Story 8.2: Command Sanitization.** Implement middleware to filter out high-risk shell commands (e.g., `rm -rf`, `sudo`).
+
+## Epic 9: Advanced Governance & Secret Management
+**Description:** Extend the governance layer with robust secret masking and additional HITL checkpoints.
+* **Story 9.1: Multi-stage HITL.** Add distinct approval gates for Commit Approval and Deploy Approval, augmenting the existing Plan Approval step.
+* **Story 9.2: Vault Integration.** Integrate HashiCorp Vault (or similar) to inject secrets safely without exposing them to the LLM context.
+
+## Epic 10: Multi-Tenancy & Project Scaffolding
+**Description:** Complete the SaaS architecture by adding organization isolation and support for Greenfield application scaffolding.
+* **Story 10.1: Greenfield Scaffolding.** Implement the Mode B workflow where the Architect agent designs and bootstraps new repositories via `gh cli`.
+* **Story 10.2: Tenant Isolation.** Add Organization IDs to knowledge bases, workspaces, and database entities to ensure secure multi-tenancy.

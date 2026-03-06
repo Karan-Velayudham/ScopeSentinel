@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentscope.model import OpenAIChatModel
+from agentscope.mcp import StdIOStatefulClient
 
-from tools.jira_tool import JiraTicket
 from agents.planner_agent import PlannerOutput
 
 logger = logging.getLogger(__name__)
@@ -54,10 +54,11 @@ def hello():
 """
 
 
-def _build_coding_prompt(ticket: JiraTicket, plan: PlannerOutput) -> str:
+def _build_coding_prompt(ticket_id: str, ticket_content: str, plan: PlannerOutput) -> str:
     steps_text = "\n".join(f"{i}. {s}" for i, s in enumerate(plan.steps, 1))
     return (
-        f"**Ticket:** {ticket.id} — {ticket.summary}\n\n"
+        f"**Ticket:** {ticket_id}\n"
+        f"**Ticket Content:**\n{ticket_content}\n\n"
         f"**Architecture Notes:**\n{plan.architecture_notes}\n\n"
         f"**Implementation Steps:**\n{steps_text}\n\n"
         "Now implement ALL of the above steps as complete, runnable code files."
@@ -113,7 +114,8 @@ class CoderAgent:
 
     async def code(
         self,
-        ticket: JiraTicket,
+        ticket_id: str,
+        ticket_content: str,
         plan: PlannerOutput,
         workspace_override: "Path | str | None" = None,
     ) -> CoderOutput:
@@ -121,7 +123,8 @@ class CoderAgent:
         Generate code for the given ticket and approved plan.
 
         Args:
-            ticket:             The original JiraTicket.
+            ticket_id:          The original Jira ticket ID.
+            ticket_content:     The text content of the Jira ticket.
             plan:               The HITL-approved PlannerOutput.
             workspace_override: If provided, write files here instead of workspace/<id>/.
 
@@ -131,17 +134,17 @@ class CoderAgent:
         workspace = (
             Path(workspace_override).resolve()
             if workspace_override
-            else WORKSPACE_ROOT / ticket.id
+            else WORKSPACE_ROOT / ticket_id
         )
         workspace.mkdir(parents=True, exist_ok=True)
         logger.info(f"CoderAgent: workspace at '{workspace}'")
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": _build_coding_prompt(ticket, plan)},
+            {"role": "user",   "content": _build_coding_prompt(ticket_id, ticket_content, plan)},
         ]
 
-        logger.info(f"CoderAgent: calling LLM to generate code for {ticket.id}...")
+        logger.info(f"CoderAgent: calling LLM to generate code for {ticket_id}...")
         response = await self.model(messages)
 
         raw = ""
@@ -182,7 +185,7 @@ class CoderAgent:
             logger.info(f"  ✍️  Written: {dest}")
 
         return CoderOutput(
-            ticket_id=ticket.id,
+            ticket_id=ticket_id,
             workspace_path=str(workspace.resolve()),
             files_written=files_written,
             raw_response=raw,
@@ -190,18 +193,21 @@ class CoderAgent:
 
     async def code_with_validation(
         self,
-        ticket: JiraTicket,
+        ticket_id: str,
+        ticket_content: str,
         plan: PlannerOutput,
-        workspace_override: "Path | str | None" = None,
+        mcp_client: StdIOStatefulClient,
     ) -> CoderOutput:
         """
         Generate code, then validate it in a Docker sandbox.
-        If validation fails, feed errors back to the LLM and retry
-        (up to MAX_CORRECTION_ATTEMPTS times).
+        If validation fails, feed errors back to the LLM and retry.
+        Also uses MCP tools to prepare git branch, commit, push, and PR.
 
         Args:
-            ticket: The original JiraTicket.
-            plan:   The HITL-approved PlannerOutput.
+            ticket_id:      The original Jira ticket ID.
+            ticket_content: The formatted jira ticket content fetched from MCP.
+            plan:           The HITL-approved PlannerOutput.
+            mcp_client:     The MCP client to interact with Git and Github tools.
 
         Returns:
             The final CoderOutput (after self-correction if needed).
@@ -209,77 +215,109 @@ class CoderAgent:
         from sandbox.sandbox_runner import SandboxRunner
         from sandbox.validator import CodeValidator
 
-        output = await self.code(ticket, plan, workspace_override=workspace_override)
+        # 1. Prepare Git Branch via MCP
+        workspace_path = None
+        try:
+            prep_func = await mcp_client.get_callable_function("prepare_git_branch")
+            res = await prep_func(ticket_id=ticket_id)
+            if hasattr(res, 'content'):
+                res_text = res.content[0]['text']
+            else:
+                res_text = str(res)
+            
+            # Very basic extraction: "Branch prepared at /path"
+            if " at " in res_text:
+                workspace_path = res_text.split(" at ")[-1].strip()
+            logger.info(f"CoderAgent: MCP prepare_git_branch returned: {res_text}")
+        except Exception as e:
+            logger.warning(f"CoderAgent: Failed to prepare branch via MCP: {e}")
+
+        # 2. Code and Validate
+        output = await self.code(ticket_id, ticket_content, plan, workspace_override=workspace_path)
         workspace = Path(output.workspace_path)
 
         try:
             runner = SandboxRunner(workspace)
         except RuntimeError as e:
             logger.warning(f"CoderAgent: Docker unavailable, skipping validation. {e}")
-            return output
+            runner = None
+            
+        if runner:
+            validator = CodeValidator(runner)
+            conversation: list[dict] = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": _build_coding_prompt(ticket_id, ticket_content, plan)},
+                {"role": "assistant", "content": output.raw_response},
+            ]
 
-        validator = CodeValidator(runner)
-        conversation: list[dict] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": _build_coding_prompt(ticket, plan)},
-            {"role": "assistant", "content": output.raw_response},
-        ]
+            for attempt in range(1, MAX_CORRECTION_ATTEMPTS + 1):
+                logger.info(f"CoderAgent: running sandbox validation (attempt {attempt})...")
+                result = validator.validate()
 
-        for attempt in range(1, MAX_CORRECTION_ATTEMPTS + 1):
-            logger.info(f"CoderAgent: running sandbox validation (attempt {attempt})...")
-            result = validator.validate()
+                if result.passed:
+                    logger.info(f"CoderAgent: validation passed on attempt {attempt}. ✅")
+                    break
 
-            if result.passed:
-                logger.info(f"CoderAgent: validation passed on attempt {attempt}. ✅")
-                break
+                logger.warning(
+                    f"CoderAgent: validation failed (attempt {attempt}/{MAX_CORRECTION_ATTEMPTS}).\n"
+                    f"{result.output[:800]}"
+                )
 
-            logger.warning(
-                f"CoderAgent: validation failed (attempt {attempt}/{MAX_CORRECTION_ATTEMPTS}).\n"
-                f"{result.output[:800]}"
-            )
+                if attempt == MAX_CORRECTION_ATTEMPTS:
+                    logger.error("CoderAgent: max correction attempts reached. Proceeding with last output.")
+                    break
 
-            if attempt == MAX_CORRECTION_ATTEMPTS:
-                logger.error("CoderAgent: max correction attempts reached. Proceeding with last output.")
-                break
+                # Self-correction: send errors back to the LLM
+                correction_prompt = (
+                    f"Your generated code failed validation (attempt {attempt}).\n\n"
+                    f"Errors:\n{result.output}\n\n"
+                    "Please fix ALL issues. Rewrite every affected file in full using the same "
+                    "### `filepath` + fenced code block format. Do not include explanation text."
+                )
+                conversation.append({"role": "user", "content": correction_prompt})
 
-            # Self-correction: send errors back to the LLM
-            correction_prompt = (
-                f"Your generated code failed validation (attempt {attempt}).\n\n"
-                f"Errors:\n{result.output}\n\n"
-                "Please fix ALL issues. Rewrite every affected file in full using the same "
-                "### `filepath` + fenced code block format. Do not include explanation text."
-            )
-            conversation.append({"role": "user", "content": correction_prompt})
+                logger.info("CoderAgent: requesting self-correction from LLM...")
+                response = await self.model(conversation)
 
-            logger.info("CoderAgent: requesting self-correction from LLM...")
-            response = await self.model(conversation)
+                raw = ""
+                if hasattr(response, "content") and isinstance(response.content, list):
+                    for block in response.content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            raw = block["text"]
+                            break
+                if not raw:
+                    raw = str(response)
 
-            raw = ""
-            if hasattr(response, "content") and isinstance(response.content, list):
-                for block in response.content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        raw = block["text"]
-                        break
-            if not raw:
-                raw = str(response)
+                conversation.append({"role": "assistant", "content": raw})
 
-            conversation.append({"role": "assistant", "content": raw})
+                # Overwrite files with corrected versions
+                files = _parse_files(raw)
+                files_written = []
+                for rel_path, content in files.items():
+                    dest = workspace / rel_path
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_text(content, encoding="utf-8")
+                    files_written.append(rel_path)
+                    logger.info(f"  ✍️  Corrected: {dest}")
 
-            # Overwrite files with corrected versions
-            files = _parse_files(raw)
-            files_written = []
-            for rel_path, content in files.items():
-                dest = workspace / rel_path
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(content, encoding="utf-8")
-                files_written.append(rel_path)
-                logger.info(f"  ✍️  Corrected: {dest}")
+                output = CoderOutput(
+                    ticket_id=ticket_id,
+                    workspace_path=str(workspace),
+                    files_written=files_written,
+                    raw_response=raw,
+                )
 
-            output = CoderOutput(
-                ticket_id=ticket.id,
-                workspace_path=str(workspace),
-                files_written=files_written,
-                raw_response=raw,
-            )
+        # 3. Commit, Push, and Create PR via MCP
+        if workspace_path is not None:
+            try:
+                commit_func = await mcp_client.get_callable_function("commit_and_push")
+                res = await commit_func(ticket_id=ticket_id, summary=plan.summary)
+                logger.info(f"CoderAgent: Commit and push returned: {res}")
+
+                pr_func = await mcp_client.get_callable_function("create_pull_request")
+                res = await pr_func(ticket_id=ticket_id, plan=plan.raw_plan, branch_name=f"sentinel/{ticket_id}")
+                logger.info(f"CoderAgent: Create PR returned: {res}")
+            except Exception as e:
+                logger.warning(f"CoderAgent: Failed to finalize PR via MCP: {e}")
 
         return output

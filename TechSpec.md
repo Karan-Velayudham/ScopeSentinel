@@ -73,5 +73,6 @@ Every agent interaction is captured as a `Msg` object. This ensures a full audit
 ### 5. SaaS Infrastructure & Scalability
 -   **Multi-Tenancy:** Hard isolation of knowledge bases and workspaces by Organization ID.
 -   **Custom Personas:** Users can define specialized agents (e.g., "QA Specialist", "Security Auditor") with custom toolsets.
+-   **MCP Integration:** External tools and context sources (Jira, GitHub, internal APIs) are integrated via the Model Context Protocol (MCP) to ensure standardized, dynamic tool discovery.
 -   **API Integration:** All orchestrations are exposed via a **FastAPI** layer for integration into existing Jenkins or GitHub Actions pipelines.
 

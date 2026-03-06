@@ -18,10 +18,8 @@ import logging
 from dotenv import load_dotenv
 import agentscope
 from agentscope.model import OpenAIChatModel
+from agentscope.mcp import StdIOStatefulClient
 
-from tools.jira_tool import JiraTool
-from tools.git_tool import GitTool
-from tools.github_tool import GithubTool
 from agents.planner_agent import PlannerAgent
 from agents.coder_agent import CoderAgent
 from hitl.hitl_gateway import HITLGateway
@@ -57,54 +55,51 @@ async def run_planner_workflow(ticket_id: str) -> None:
     model = _build_model()
     logger.info("Model initialized.")
 
-    # --- Step 1: Fetch ticket ---
-    jira = JiraTool()
-    ticket = jira.fetch_ticket(ticket_id)
+    # --- Step 1: Start MCP Client ---
+    logger.info("Starting MCP Client connecting to tools...")
+    mcp_client = StdIOStatefulClient("tools_mcp", command="python", args=["tools/mcp_server.py"])
+    await mcp_client.connect()
+
+    # --- Step 2: Fetch ticket for display (Agent will also fetch internally) ---
+    fetch_func = await mcp_client.get_callable_function("fetch_jira_ticket")
+    res = await fetch_func(ticket_id=ticket_id)
+    if hasattr(res, 'content'):
+        ticket_content = res.content[0]['text']
+    else:
+        ticket_content = str(res)
 
     print("\n" + "=" * 60)
-    print(f"  Ticket  : {ticket.id}  [{ticket.issue_type}]  — {ticket.status}")
-    print(f"  Summary : {ticket.summary}")
-    if ticket.acceptance_criteria:
-        print(f"  AC      : {ticket.acceptance_criteria[:120]}"
-              f"{'…' if len(ticket.acceptance_criteria) > 120 else ''}")
+    print(f"  Ticket Context Snapshot:\n{ticket_content}")
     print("=" * 60)
 
-    # --- Step 2: Generate plan ---
+    # --- Step 3: Generate plan ---
     planner = PlannerAgent(model=model)
     hitl = HITLGateway()
 
-    plan = await planner.plan(ticket)
+    plan = await planner.plan(ticket_id, mcp_client)
 
-    # --- Step 3: HITL approval loop (Story 3.2) ---
+    # --- Step 4: HITL approval loop (Story 3.2) ---
     for revision in range(MAX_REVISIONS + 1):
         decision = await hitl.present_and_await(plan)
 
         if decision.action == "approve":
             print(f"  ✅ Plan approved after {revision} revision(s). Updating Jira ticket...")
             try:
-                jira.update_ticket_with_plan(ticket_id, plan)
-                print(f"  📝 Jira ticket {ticket_id} updated with the approved plan.")
-            except ValueError as e:
-                logger.warning(f"Could not update Jira ticket: {e}")
+                update_func = await mcp_client.get_callable_function("update_jira_ticket")
+                update_res = await update_func(ticket_id=ticket_id, plan=plan.raw_plan)
+                print(f"  📝 Jira ticket {ticket_id} updated: {update_res}")
+            except Exception as e:
+                logger.warning(f"Could not update Jira ticket via MCP: {e}")
                 print(f"  ⚠️  Could not update Jira ticket: {e}")
 
-            # --- Step 4a: Prepare git branch (local repo IS the workspace) ---
-            git = None
-            workspace_path = None
-            try:
-                git = GitTool()
-                workspace_path = git.prepare_branch(ticket_id)
-                print(f"\n  🌿 Branch 'sentinel/{ticket_id}' ready in '{workspace_path}'")
-            except (EnvironmentError, Exception) as e:
-                logger.warning(f"Git setup skipped: {e}")
-                print(f"  ⚠️  Git setup skipped (will use local workspace): {e}")
-
-            # --- Step 4b: Code Generation + Sandbox Validation (Epic 4.1–4.3) ---
-            print("\n  🤖 Handing off to Coder Agent...\n")
+            # --- Step 5: Code Generation, Validation, and PR Creation via Coder Agent ---
+            print("\n  🤖 Handing off to Coder Agent (Code + Validate + PR)...\n")
             coder = CoderAgent(model=model)
             result = await coder.code_with_validation(
-                ticket, plan,
-                workspace_override=workspace_path,   # write into repo dir if available
+                ticket_id=ticket_id,
+                ticket_content=ticket_content,
+                plan=plan,
+                mcp_client=mcp_client
             )
 
             if result.files_written:
@@ -115,44 +110,23 @@ async def run_planner_workflow(ticket_id: str) -> None:
             else:
                 print("  ⚠️  Coder Agent produced no files.")
                 logger.debug(result.raw_response)
-
-            # --- Step 5: Commit + push + PR (Epic 5) ---
-            git_result = None
-            if git:
-                print("\n  🌿 Committing and pushing...")
-                try:
-                    git_result = git.commit_and_push(ticket_id, ticket.summary)
-                    print(f"  ✅ Branch pushed: {git_result.branch_name}")
-                    print(f"     Commit: {git_result.commit_sha[:8]}")
-                except Exception as e:
-                    logger.warning(f"Git push failed: {e}")
-                    print(f"  ⚠️  Git push failed: {e}")
-
-            if git_result:
-                print("\n  🔀 Opening Pull Request...")
-                try:
-                    gh = GithubTool()
-                    pr = gh.create_pr(
-                        ticket=ticket,
-                        plan=plan,
-                        branch_name=git_result.branch_name,
-                    )
-                    print(f"  🎉 PR #{pr.pr_number} opened: {pr.pr_url}")
-                except Exception as e:
-                    logger.warning(f"PR creation skipped: {e}")
-                    print(f"  ⚠️  PR creation skipped: {e}")
-
+                
+            print("\n  🎉 Workflow Complete. Agent has handled Git pushing and PR creation via MCP.")
+            await mcp_client.close()
             return
 
         elif decision.action == "reject":
             print(f"  ❌ Workflow aborted by reviewer for ticket {ticket_id}.")
+            await mcp_client.close()
             return
 
         elif decision.action == "modify":
             if revision >= MAX_REVISIONS:
                 print(f"\n  ⚠️  Maximum revisions ({MAX_REVISIONS}) reached. Aborting.")
+                await mcp_client.close()
                 return
-            plan = await planner.replan(ticket, decision.feedback, plan)
+            plan = await planner.replan(ticket_id, mcp_client, decision.feedback, plan)
+
 
 
 async def run_healthcheck() -> None:
