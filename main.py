@@ -20,6 +20,8 @@ import agentscope
 from agentscope.model import OpenAIChatModel
 
 from tools.jira_tool import JiraTool
+from tools.git_tool import GitTool
+from tools.github_tool import GithubTool
 from agents.planner_agent import PlannerAgent
 from agents.coder_agent import CoderAgent
 from hitl.hitl_gateway import HITLGateway
@@ -99,6 +101,37 @@ async def run_planner_workflow(ticket_id: str) -> None:
             else:
                 print("  ⚠️  Coder Agent produced no files. Check the raw LLM response.")
                 logger.debug(result.raw_response)
+
+            # --- Step 5: Git push + GitHub PR (Epic 5) ---
+            print("\n  🌿 Pushing to GitHub...")
+            git_result = None
+            try:
+                git = GitTool()
+                git_result = git.push_workspace(
+                    ticket_id=ticket_id,
+                    summary=ticket.summary,
+                    workspace_path=result.workspace_path,
+                )
+                print(f"  ✅ Branch pushed: {git_result.branch_name}")
+                print(f"     Commit: {git_result.commit_sha[:8]}")
+            except (EnvironmentError, Exception) as e:
+                logger.warning(f"Git push skipped: {e}")
+                print(f"  ⚠️  Git push skipped: {e}")
+
+            if git_result:
+                print("\n  🔀 Opening Pull Request...")
+                try:
+                    gh = GithubTool()
+                    pr = gh.create_pr(
+                        ticket=ticket,
+                        plan=plan,
+                        branch_name=git_result.branch_name,
+                    )
+                    print(f"  🎉 PR #{pr.pr_number} opened: {pr.pr_url}")
+                except (EnvironmentError, Exception) as e:
+                    logger.warning(f"PR creation skipped: {e}")
+                    print(f"  ⚠️  PR creation skipped: {e}")
+
             return
 
         elif decision.action == "reject":
