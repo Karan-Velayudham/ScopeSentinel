@@ -77,7 +77,14 @@ async def run_planner_workflow(ticket_id: str) -> None:
         decision = await hitl.present_and_await(plan)
 
         if decision.action == "approve":
-            print(f"  ✅ Plan approved after {revision} revision(s). Ready for code generation.")
+            print(f"  ✅ Plan approved after {revision} revision(s). Updating Jira ticket...")
+            try:
+                jira.update_ticket_with_plan(ticket_id, plan)
+                print(f"  📝 Jira ticket {ticket_id} updated with the approved plan.")
+            except ValueError as e:
+                logger.warning(f"Could not update Jira ticket: {e}")
+                print(f"  ⚠️  Could not update Jira ticket: {e}")
+            print("  🚀 Ready for code generation.")
             # TODO (Epic 4): hand off to CoderAgent here
             return
 

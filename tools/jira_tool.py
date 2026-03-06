@@ -167,6 +167,41 @@ class JiraTool:
 
         return "\n".join(ac_lines).strip()
 
+    def update_ticket_with_plan(self, ticket_id: str, plan) -> None:
+        """
+        Write the approved implementation plan back to the Jira ticket's description.
+
+        Args:
+            ticket_id: The Jira ticket ID (e.g. "SCRUM-6").
+            plan:       A PlannerOutput instance with steps and architecture_notes.
+
+        Raises:
+            ValueError: If the ticket cannot be found or updated.
+        """
+        try:
+            issue = self._client.issue(ticket_id)
+        except JIRAError as e:
+            raise ValueError(f"Could not fetch ticket '{ticket_id}' for update: {e.text}") from e
+
+        # Build a clean Jira-wiki-markup description block
+        lines = ["h2. ScopeSentinel Implementation Plan", ""]
+        if plan.architecture_notes:
+            lines += ["h3. Architecture Notes", plan.architecture_notes, ""]
+        if plan.steps:
+            lines += ["h3. Implementation Steps"]
+            for i, step in enumerate(plan.steps, start=1):
+                # Strip any markdown bold markers (**...**) for cleaner Jira markup
+                clean = step.strip().strip("*").strip()
+                lines.append(f"# {clean}")
+        
+        description_body = "\n".join(lines)
+
+        try:
+            issue.update(fields={"description": description_body})
+            logger.info(f"Jira ticket {ticket_id} description updated with approved plan.")
+        except JIRAError as e:
+            raise ValueError(f"Failed to update ticket '{ticket_id}': {e.text}") from e
+
 
 # --- CLI for quick manual testing ---
 if __name__ == "__main__":
