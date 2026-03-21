@@ -1,167 +1,112 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Database, Github, Key, Link as LinkIcon, Monitor, RefreshCw, Slack } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 
-const MOCK_INTEGRATIONS = [
-    {
-        id: "github",
-        name: "GitHub",
-        description: "Connect to GitHub repositories for PRs and issues.",
-        icon: Github,
-        type: "oauth",
-        status: "connected",
-        lastSync: "10 mins ago",
-        health: "healthy",
-    },
-    {
-        id: "jira",
-        name: "Jira",
-        description: "Sync with Jira issues, epics, and sprints.",
-        icon: Database,
-        type: "oauth",
-        status: "disconnected",
-        lastSync: null,
-        health: null,
-    },
-    {
-        id: "slack",
-        name: "Slack",
-        description: "Send notifications to Slack channels.",
-        icon: Slack,
-        type: "oauth",
-        status: "connected",
-        lastSync: "1 hour ago",
-        health: "error",
-    },
-    {
-        id: "openai",
-        name: "OpenAI API",
-        description: "Connect to OpenAI models directly using an API key.",
-        icon: Monitor,
-        type: "apikey",
-        status: "disconnected",
-        lastSync: null,
-        health: null,
+const getIconForCategory = (category: string) => {
+    switch (category) {
+        case "VCS": return Github;
+        case "Chat": return Slack;
+        case "Observability": return Monitor;
+        case "Issue Tracking": return Database;
+        default: return LinkIcon;
     }
-]
+}
 
 export default function IntegrationsPage() {
-    const [integrations, setIntegrations] = useState(MOCK_INTEGRATIONS)
-    const [activeApiKeyDialog, setActiveApiKeyDialog] = useState<string | null>(null)
-    const [apiKey, setApiKey] = useState("")
+    const [available, setAvailable] = useState<any[]>([])
+    const [installed, setInstalled] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
 
-    const handleConnectOauth = (id: string) => {
-        // Mock OAuth redirect
-        setIntegrations(prev => prev.map(int => int.id === id ? { ...int, status: "connected", health: "healthy", lastSync: "just now" } : int))
+    const fetchData = async () => {
+        try {
+            const resAvail = await fetch('http://localhost:8000/api/connectors/available')
+            const avail = await resAvail.json()
+            setAvailable(avail)
+
+            const resInst = await fetch('http://localhost:8000/api/connectors/installed')
+            const inst = await resInst.json()
+            setInstalled(inst)
+
+            setLoading(false)
+        } catch (e) {
+            console.error("Failed to fetch connectors", e)
+            setLoading(false)
+        }
     }
 
-    const handleConnectApiKey = (id: string) => {
-        // Mock API key save
-        setIntegrations(prev => prev.map(int => int.id === id ? { ...int, status: "connected", health: "healthy", lastSync: "just now" } : int))
-        setActiveApiKeyDialog(null)
-        setApiKey("")
+    useEffect(() => {
+        fetchData()
+    }, [])
+
+    const handleConnect = async (connectorId: string) => {
+        try {
+            const res = await fetch(`http://localhost:8000/api/connectors/${connectorId}/install`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ config: { token: "mock_token" } })
+            })
+            if (res.ok) {
+                fetchData() // refresh
+            } else {
+                alert("Failed to install connector or already installed.")
+            }
+        } catch (e) {
+            alert("Error installing connector")
+        }
     }
 
-    const handleDisconnect = (id: string) => {
-        setIntegrations(prev => prev.map(int => int.id === id ? { ...int, status: "disconnected", health: null, lastSync: null } : int))
-    }
+    if (loading) return <div className="p-8">Loading Marketplace...</div>
 
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between border-b pb-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Integrations</h1>
-                    <p className="text-muted-foreground mt-1">Manage connected applications, API keys, and workflow tools.</p>
+                    <h1 className="text-3xl font-bold tracking-tight">App Marketplace</h1>
+                    <p className="text-muted-foreground mt-1">Discover and install connectors to use tools inside your Agentic Workflows.</p>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {integrations.map((integration) => {
-                    const isConnected = integration.status === "connected"
-                    const isHealthy = integration.health === "healthy"
+                {available.map((connector) => {
+                    const instEntry = installed.find(i => i.connector_id === connector.id)
+                    const isConnected = !!instEntry
+                    const isHealthy = isConnected && instEntry.is_active
+                    const Icon = getIconForCategory(connector.category)
 
                     return (
-                        <Card key={integration.id} className="flex flex-col">
+                        <Card key={connector.id} className="flex flex-col shadow-sm">
                             <CardHeader className="pb-4">
                                 <div className="flex items-start justify-between">
                                     <div className="p-2 border rounded-md">
-                                        <integration.icon className="h-6 w-6" />
+                                        <Icon className="h-6 w-6" />
                                     </div>
                                     {isConnected && (
-                                        <Badge variant={isHealthy ? "default" : "destructive"} className={isHealthy ? "bg-green-500/10 text-green-600 hover:bg-green-500/20 dark:text-green-400" : ""}>
-                                            {isHealthy ? "Healthy" : "Error"}
+                                        <Badge variant="default" className="bg-green-500/10 text-green-600 dark:text-green-400">
+                                            Installed
                                         </Badge>
                                     )}
                                 </div>
-                                <CardTitle className="mt-4">{integration.name}</CardTitle>
-                                <CardDescription className="line-clamp-2 min-h-[40px]">{integration.description}</CardDescription>
+                                <CardTitle className="mt-4">{connector.name}</CardTitle>
+                                <CardDescription className="line-clamp-2 min-h-[40px]">{connector.description}</CardDescription>
                             </CardHeader>
                             <CardContent className="flex-1">
-                                {isConnected ? (
-                                    <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-                                        <div className="flex items-center gap-2">
-                                            <RefreshCw className="h-3.5 w-3.5" />
-                                            <span>Last synced: {integration.lastSync}</span>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                        {integration.type === "oauth" ? <LinkIcon className="h-3.5 w-3.5" /> : <Key className="h-3.5 w-3.5" />}
-                                        <span>{integration.type === "oauth" ? "OAuth Connection" : "API Key Required"}</span>
-                                    </div>
-                                )}
+                                <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                    <Badge variant="secondary">{connector.category}</Badge>
+                                </div>
                             </CardContent>
                             <CardFooter className="pt-4 border-t gap-2">
                                 {isConnected ? (
                                     <>
-                                        <Button variant="outline" className="w-full">Configure</Button>
-                                        <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 px-3" onClick={() => handleDisconnect(integration.id)}>
-                                            Disconnect
-                                        </Button>
+                                        <Button variant="outline" className="w-full">Configure Settings</Button>
                                     </>
                                 ) : (
-                                    integration.type === "oauth" ? (
-                                        <Button className="w-full" onClick={() => handleConnectOauth(integration.id)}>
-                                            Connect
-                                        </Button>
-                                    ) : (
-                                        <Dialog open={activeApiKeyDialog === integration.id} onOpenChange={(open) => setActiveApiKeyDialog(open ? integration.id : null)}>
-                                            <DialogTrigger>
-                                                <Button className="w-full">Provide API Key</Button>
-                                            </DialogTrigger>
-                                            <DialogContent>
-                                                <DialogHeader>
-                                                    <DialogTitle>Connect {integration.name}</DialogTitle>
-                                                    <DialogDescription>
-                                                        Enter your API key or Personal Access Token to connect this integration.
-                                                    </DialogDescription>
-                                                </DialogHeader>
-                                                <div className="py-4 space-y-4">
-                                                    <div className="space-y-2">
-                                                        <Label htmlFor="api-key">API Key</Label>
-                                                        <Input
-                                                            id="api-key"
-                                                            type="password"
-                                                            placeholder="sk-..."
-                                                            value={apiKey}
-                                                            onChange={(e) => setApiKey(e.target.value)}
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <DialogFooter>
-                                                    <Button variant="outline" onClick={() => setActiveApiKeyDialog(null)}>Cancel</Button>
-                                                    <Button onClick={() => handleConnectApiKey(integration.id)} disabled={!apiKey}>Save Connection</Button>
-                                                </DialogFooter>
-                                            </DialogContent>
-                                        </Dialog>
-                                    )
+                                    <Button className="w-full" onClick={() => handleConnect(connector.id)}>
+                                        Install Connector
+                                    </Button>
                                 )}
                             </CardFooter>
                         </Card>

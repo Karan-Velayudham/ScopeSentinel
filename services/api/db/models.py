@@ -81,6 +81,7 @@ class Org(SQLModel, table=True):
     users: list["User"] = Relationship(back_populates="org")
     runs: list["WorkflowRun"] = Relationship(back_populates="org")
     workflows: list["Workflow"] = Relationship(back_populates="org")
+    installed_connectors: list["InstalledConnector"] = Relationship(back_populates="org")
 
 
 # ---------------------------------------------------------------------------

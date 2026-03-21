@@ -161,3 +161,24 @@ class WorkflowResponse(BaseModel):
 class WorkflowListResponse(BaseModel):
     items: list[WorkflowResponse]
     meta: PaginationMeta
+
+# ---------------------------------------------------------------------------
+# Connector DSL & APIs
+# ---------------------------------------------------------------------------
+
+class ConnectorInfo(BaseModel):
+    id: str
+    name: str
+    description: str
+    category: str
+    icon_url: str
+
+class ConnectorInstallRequest(BaseModel):
+    config: dict[str, Any]
+
+class InstalledConnectorResponse(BaseModel):
+    id: str
+    connector_id: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
