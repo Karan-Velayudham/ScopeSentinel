@@ -3,25 +3,42 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { RunTimeline } from "@/components/runs/run-timeline"
 import { LiveLogs } from "@/components/runs/live-logs"
+import { PlanReviewPanel } from "@/components/hitl/plan-review"
+import { DiffViewer } from "@/components/hitl/diff-viewer"
 import { ArrowLeft, Play, RefreshCw, SquareTerminal } from "lucide-react"
 import Link from "next/link"
+
+const MOCK_DIFF = `
+@@ -10,3 +10,4 @@
+ export function App() {
+   return <div className="app">
+-    <h1>Hello World</h1>
++    <h1>Hello ScopeSentinel</h1>
++    <p>New Feature</p>
+   </div>
+ }
+`
 
 export default async function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = await params;
     const runId = resolvedParams.id;
 
     return (
-        <div className="flex flex-col gap-6 h-[calc(100vh-8rem)]">
-            <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-6 h-[calc(100vh-8rem)] overflow-y-auto pb-8">
+            <div className="flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" asChild>
-                        <Link href="/runs"><ArrowLeft className="h-4 w-4" /></Link>
-                    </Button>
+                    <Link href="/runs">
+                        <Button variant="ghost" size="icon">
+                            <ArrowLeft className="h-4 w-4" />
+                        </Button>
+                    </Link>
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight">Run {runId}</h1>
                         <p className="text-muted-foreground text-sm">Ticket: SCRUM-8 • Started at 2026-03-21T10:00:00Z</p>
                     </div>
-                    <Badge variant="default" className="ml-2">SUCCEEDED</Badge>
+                    <Badge variant={runId === "run-126" ? "outline" : "default"} className="ml-2">
+                        {runId === "run-126" ? "WAITING_HITL" : "SUCCEEDED"}
+                    </Badge>
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm">
@@ -35,7 +52,22 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
+            {(runId === "126" || runId === "run-126") && (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 shrink-0">
+                    <PlanReviewPanel runId={runId} />
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Code Changes</CardTitle>
+                            <CardDescription>Proposed file modifications</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <DiffViewer code={MOCK_DIFF} language="diff" />
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-[500px]">
                 <div className="lg:col-span-1 overflow-y-auto pr-2">
                     <Card className="h-full flex flex-col">
                         <CardHeader className="pb-3">

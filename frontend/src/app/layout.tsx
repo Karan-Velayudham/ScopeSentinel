@@ -15,6 +15,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { HitlBanner } from "@/components/hitl-banner";
+
 export const metadata: Metadata = {
   title: "ScopeSentinel",
   description: "Web UI Monitoring Dashboard for ScopeSentinel",
@@ -38,6 +40,7 @@ export default function RootLayout({
                   <span className="truncate">ScopeSentinel</span>
                 </div>
               </header>
+              <HitlBanner />
               <main className="flex-1 p-6 md:p-8">
                 {children}
               </main>
