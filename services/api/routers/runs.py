@@ -166,6 +166,7 @@ async def get_run(
 
     return RunDetailResponse(
         run_id=run.id,
+        workflow_id=run.workflow_id,
         ticket_id=run.ticket_id,
         status=run.status.value,
         dry_run=run.dry_run,

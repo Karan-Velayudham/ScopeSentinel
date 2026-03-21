@@ -1,17 +1,18 @@
 """PagerDuty connector stub."""
 from connectors.base import BaseConnector
+from schemas import ConnectorInfo
 
 
 class PagerDutyConnector(BaseConnector):
     @classmethod
-    def info(cls) -> dict:
-        return {
-            "id": "pagerduty",
-            "name": "PagerDuty",
-            "description": "Connect to PagerDuty to receive incident alerts and manage on-call rotations.",
-            "icon": "🚨",
-            "category": "Observability",
-        }
+    def info(cls) -> ConnectorInfo:
+        return ConnectorInfo(
+            id="pagerduty",
+            name="PagerDuty",
+            description="Connect to PagerDuty to receive incident alerts and manage on-call rotations.",
+            icon_url="🚨",
+            category="Observability",
+        )
 
     async def list_tools(self) -> list[dict]:
         return [

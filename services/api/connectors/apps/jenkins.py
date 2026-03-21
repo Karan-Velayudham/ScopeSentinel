@@ -1,17 +1,18 @@
 """Jenkins connector stub."""
 from connectors.base import BaseConnector
+from schemas import ConnectorInfo
 
 
 class JenkinsConnector(BaseConnector):
     @classmethod
-    def info(cls) -> dict:
-        return {
-            "id": "jenkins",
-            "name": "Jenkins",
-            "description": "Connect to Jenkins to trigger and monitor CI/CD build jobs.",
-            "icon": "🤵",
-            "category": "CI/CD",
-        }
+    def info(cls) -> ConnectorInfo:
+        return ConnectorInfo(
+            id="jenkins",
+            name="Jenkins",
+            description="Connect to Jenkins to trigger and monitor CI/CD build jobs.",
+            icon_url="🤵",
+            category="CI/CD",
+        )
 
     async def list_tools(self) -> list[dict]:
         return [

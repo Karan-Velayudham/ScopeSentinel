@@ -1,17 +1,18 @@
 """Linear connector stub."""
 from connectors.base import BaseConnector
+from schemas import ConnectorInfo
 
 
 class LinearConnector(BaseConnector):
     @classmethod
-    def info(cls) -> dict:
-        return {
-            "id": "linear",
-            "name": "Linear",
-            "description": "Connect to Linear to create and update issues and projects.",
-            "icon": "📐",
-            "category": "Issue Tracking",
-        }
+    def info(cls) -> ConnectorInfo:
+        return ConnectorInfo(
+            id="linear",
+            name="Linear",
+            description="Connect to Linear to create and update issues and projects.",
+            icon_url="📐",
+            category="Issue Tracking",
+        )
 
     async def list_tools(self) -> list[dict]:
         return [

@@ -1,17 +1,18 @@
 """GitLab connector stub."""
 from connectors.base import BaseConnector
+from schemas import ConnectorInfo
 
 
 class GitLabConnector(BaseConnector):
     @classmethod
-    def info(cls) -> dict:
-        return {
-            "id": "gitlab",
-            "name": "GitLab",
-            "description": "Connect to GitLab to trigger pipelines and manage merge requests.",
-            "icon": "🦊",
-            "category": "VCS",
-        }
+    def info(cls) -> ConnectorInfo:
+        return ConnectorInfo(
+            id="gitlab",
+            name="GitLab",
+            description="Connect to GitLab to trigger pipelines and manage merge requests.",
+            icon_url="🦊",
+            category="VCS",
+        )
 
     async def list_tools(self) -> list[dict]:
         return [

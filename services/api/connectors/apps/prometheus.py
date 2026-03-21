@@ -1,17 +1,18 @@
 """Prometheus connector stub."""
 from connectors.base import BaseConnector
+from schemas import ConnectorInfo
 
 
 class PrometheusConnector(BaseConnector):
     @classmethod
-    def info(cls) -> dict:
-        return {
-            "id": "prometheus",
-            "name": "Prometheus",
-            "description": "Connect to Prometheus to query metrics and evaluate alert rules.",
-            "icon": "📊",
-            "category": "Observability",
-        }
+    def info(cls) -> ConnectorInfo:
+        return ConnectorInfo(
+            id="prometheus",
+            name="Prometheus",
+            description="Connect to Prometheus to query metrics and evaluate alert rules.",
+            icon_url="📊",
+            category="Observability",
+        )
 
     async def list_tools(self) -> list[dict]:
         return [

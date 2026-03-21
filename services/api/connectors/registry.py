@@ -26,12 +26,12 @@ AVAILABLE_CONNECTORS = [
     PrometheusConnector,
 ]
 
-_CONNECTOR_MAP = {c.info()["id"]: c for c in AVAILABLE_CONNECTORS}
+_CONNECTOR_MAP = {c.info().id: c for c in AVAILABLE_CONNECTORS}
 
 
 def get_connector_catalog() -> list[dict]:
     """Returns the full list of available connectors as dicts."""
-    return [c.info() for c in AVAILABLE_CONNECTORS]
+    return [c.info().model_dump() for c in AVAILABLE_CONNECTORS]
 
 
 def get_connector_class(connector_id: str):

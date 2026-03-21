@@ -195,3 +195,22 @@ class HitlEvent(SQLModel, table=True):
     # Relationships
     run: Optional[WorkflowRun] = Relationship(back_populates="hitl_events")
     decided_by_user: Optional[User] = Relationship(back_populates="hitl_decisions")
+
+
+# ---------------------------------------------------------------------------
+# Installed Connector
+# ---------------------------------------------------------------------------
+
+class InstalledConnector(SQLModel, table=True):
+    __tablename__ = "installed_connectors"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    connector_id: str = Field(index=True)
+    config_json: str = Field(default="{}")
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+
+    # Relationship
+    org: Optional[Org] = Relationship(back_populates="installed_connectors")

@@ -82,6 +82,7 @@ class HitlEventResponse(BaseModel):
 class RunDetailResponse(BaseModel):
     """Full run with steps and HITL history."""
     run_id: str
+    workflow_id: Optional[str] = None
     ticket_id: str
     status: str
     dry_run: bool

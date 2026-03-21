@@ -36,6 +36,6 @@ ENV PATH="/home/sentinel/.local/bin:$PATH"
 ENV LOG_FORMAT=json
 ENV LOG_LEVEL=info
 
-# Default: interactive ticket workflow; override with --ticket at runtime
-ENTRYPOINT ["python", "main.py"]
-CMD []
+# Default: interactive ticket workflow; override with other scripts or flags
+ENTRYPOINT ["python"]
+CMD ["main.py"]

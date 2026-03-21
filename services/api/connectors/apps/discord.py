@@ -1,17 +1,18 @@
 """Discord connector stub."""
 from connectors.base import BaseConnector
+from schemas import ConnectorInfo
 
 
 class DiscordConnector(BaseConnector):
     @classmethod
-    def info(cls) -> dict:
-        return {
-            "id": "discord",
-            "name": "Discord",
-            "description": "Connect to Discord to send messages and notifications to channels.",
-            "icon": "💬",
-            "category": "Chat",
-        }
+    def info(cls) -> ConnectorInfo:
+        return ConnectorInfo(
+            id="discord",
+            name="Discord",
+            description="Connect to Discord to send messages and notifications to channels.",
+            icon_url="💬",
+            category="Chat",
+        )
 
     async def list_tools(self) -> list[dict]:
         return [
