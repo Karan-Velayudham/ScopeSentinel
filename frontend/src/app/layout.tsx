@@ -29,23 +29,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen flex flex-col font-sans antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen font-sans antialiased`}>
         <Providers attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <SidebarProvider>
-            <AppSidebar />
-            <div className="flex flex-col flex-1 w-full bg-background min-h-screen">
-              <header className="flex h-16 shrink-0 items-center justify-between border-b px-4 lg:hidden">
-                <div className="flex items-center gap-2 font-semibold">
-                  <SidebarTrigger />
-                  <span className="truncate">ScopeSentinel</span>
-                </div>
-              </header>
-              <HitlBanner />
-              <main className="flex-1 p-6 md:p-8">
-                {children}
-              </main>
-            </div>
-          </SidebarProvider>
+          {children}
         </Providers>
       </body>
     </html>

@@ -216,21 +216,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command: [ "--ticket", "${TICKET:-SCRUM-8}" ]
 
-  # ── Keycloak (Phase 1 auth — optional) ──────────────────────────────────────
-  keycloak:
-    image: quay.io/keycloak/keycloak:24.0
-    container_name: scopesentinel-keycloak
-    profiles: [ "auth" ]
-    command: [ "start-dev", "--import-realm" ]
-    environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_DB: dev-mem
-    volumes:
-      - ./infra/keycloak:/opt/keycloak/data/import
-    ports:
-      - "9080:8080" # changed from 8080 to avoid clash with redpanda-console
-
   # ── Webhook Receiver (Phase 3) ───────────────────────────────────────────────
   webhook-receiver:
     build:
