@@ -40,11 +40,25 @@ def upgrade() -> None:
     op.create_index("ix_users_email", "users", ["email"], unique=True)
     op.create_index("ix_users_hashed_api_key", "users", ["hashed_api_key"])
 
+    # workflows
+    op.create_table(
+        "workflows",
+        sa.Column("id", sa.String(), primary_key=True),
+        sa.Column("org_id", sa.String(), sa.ForeignKey("orgs.id"), nullable=False),
+        sa.Column("name", sa.String(), nullable=False),
+        sa.Column("description", sa.String(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    op.create_index("ix_workflows_org_id", "workflows", ["org_id"])
+    op.create_index("ix_workflows_name", "workflows", ["name"])
+
     # workflow_runs
     op.create_table(
         "workflow_runs",
         sa.Column("id", sa.String(), primary_key=True),
         sa.Column("org_id", sa.String(), sa.ForeignKey("orgs.id"), nullable=False),
+        sa.Column("workflow_id", sa.String(), sa.ForeignKey("workflows.id"), nullable=True),
         sa.Column("ticket_id", sa.String(), nullable=False),
         sa.Column("status", sa.String(), nullable=False, server_default="PENDING"),
         sa.Column("dry_run", sa.Boolean(), nullable=False, server_default="false"),
@@ -54,6 +68,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_workflow_runs_org_id", "workflow_runs", ["org_id"])
+    op.create_index("ix_workflow_runs_workflow_id", "workflow_runs", ["workflow_id"])
     op.create_index("ix_workflow_runs_ticket_id", "workflow_runs", ["ticket_id"])
     op.create_index("ix_workflow_runs_status", "workflow_runs", ["status"])
 
@@ -90,5 +105,6 @@ def downgrade() -> None:
     op.drop_table("hitl_events")
     op.drop_table("run_steps")
     op.drop_table("workflow_runs")
+    op.drop_table("workflows")
     op.drop_table("users")
     op.drop_table("orgs")

@@ -79,6 +79,26 @@ class Org(SQLModel, table=True):
     # Relationships
     users: list["User"] = Relationship(back_populates="org")
     runs: list["WorkflowRun"] = Relationship(back_populates="org")
+    workflows: list["Workflow"] = Relationship(back_populates="org")
+
+
+# ---------------------------------------------------------------------------
+# Workflow
+# ---------------------------------------------------------------------------
+
+class Workflow(SQLModel, table=True):
+    __tablename__ = "workflows"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    name: str = Field(index=True)
+    description: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    # Relationships
+    runs: list["WorkflowRun"] = Relationship(back_populates="workflow")
+    org: Optional[Org] = Relationship(back_populates="workflows")
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +134,7 @@ class WorkflowRun(SQLModel, table=True):
 
     id: str = Field(default_factory=_new_uuid, primary_key=True)
     org_id: str = Field(foreign_key="orgs.id", index=True)
+    workflow_id: Optional[str] = Field(default=None, foreign_key="workflows.id", index=True)
     ticket_id: str = Field(index=True)
     status: RunStatus = Field(default=RunStatus.PENDING, index=True)
     dry_run: bool = Field(default=False)
@@ -125,6 +146,7 @@ class WorkflowRun(SQLModel, table=True):
 
     # Relationships
     org: Optional[Org] = Relationship(back_populates="runs")
+    workflow: Optional[Workflow] = Relationship(back_populates="runs")
     steps: list["RunStep"] = Relationship(back_populates="run")
     hitl_events: list["HitlEvent"] = Relationship(back_populates="run")
 
