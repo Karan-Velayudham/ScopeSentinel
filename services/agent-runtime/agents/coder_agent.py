@@ -111,8 +111,9 @@ class CoderAgent:
     written to workspace/<ticket_id>/.
     """
 
-    def __init__(self, model: OpenAIChatModel):
+    def __init__(self, model: OpenAIChatModel, system_prompt: str = None):
         self.model = model
+        self.system_prompt = system_prompt or SYSTEM_PROMPT
 
     async def code(
         self,
@@ -147,7 +148,7 @@ class CoderAgent:
         log.info("coder.workspace_ready", path=str(workspace))
 
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user",   "content": _build_coding_prompt(ticket_id, ticket_content, plan)},
         ]
 
@@ -264,7 +265,7 @@ class CoderAgent:
         if runner:
             validator = CodeValidator(runner)
             conversation: list[dict] = [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user",   "content": _build_coding_prompt(ticket_id, ticket_content, plan)},
                 {"role": "assistant", "content": output.raw_response},
             ]

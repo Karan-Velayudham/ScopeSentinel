@@ -53,8 +53,9 @@ class AnalyzerAgent:
     An agent that reviews generated code against the plan and ticket.
     """
 
-    def __init__(self, model: OpenAIChatModel):
+    def __init__(self, model: OpenAIChatModel, system_prompt: str = None):
         self.model = model
+        self.system_prompt = system_prompt or SYSTEM_PROMPT
 
     async def analyze(
         self,
@@ -86,7 +87,7 @@ class AnalyzerAgent:
         )
 
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt},
         ]
 

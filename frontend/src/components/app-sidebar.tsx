@@ -8,6 +8,7 @@ import {
     Settings2,
     Workflow,
     LogOut,
+    Bot,
 } from "lucide-react"
 import { useSession, signIn, signOut } from "next-auth/react"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -41,6 +42,11 @@ const data = {
             title: "Workflows",
             url: "/workflows",
             icon: Workflow,
+        },
+        {
+            title: "Agents",
+            url: "/agents",
+            icon: Bot,
         },
         {
             title: "Integrations",

@@ -31,10 +31,13 @@ export function workflowGraphToYaml(name: string, description: string, nodes: No
                 position: n.position
             };
 
+            const agent_id = n.data.agent_id || n.data.agentId;
+
             return {
                 id: n.id,
                 name: n.data.label || typeStr,
                 type: typeStr,
+                agent_id,
                 inputs: {
                     ...n.data,
                     ui_metadata
@@ -103,7 +106,11 @@ export function yamlToWorkflowGraph(yamlStr: string): { nodes: Node[], edges: Ed
         }
 
         // copy inputs minus ui_metadata into data
-        const nodeData = { ...step.inputs, label: step.name };
+        const nodeData = {
+            ...step.inputs,
+            label: step.name,
+            agentId: step.agent_id || step.inputs?.agentId
+        };
         delete nodeData.ui_metadata;
 
         nodes.push({

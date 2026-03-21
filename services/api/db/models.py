@@ -81,6 +81,7 @@ class Org(SQLModel, table=True):
     users: list["User"] = Relationship(back_populates="org")
     runs: list["WorkflowRun"] = Relationship(back_populates="org")
     workflows: list["Workflow"] = Relationship(back_populates="org")
+    agents: list["Agent"] = Relationship(back_populates="org")
     installed_connectors: list["InstalledConnector"] = Relationship(back_populates="org")
 
 
@@ -103,6 +104,28 @@ class Workflow(SQLModel, table=True):
     # Relationships
     runs: list["WorkflowRun"] = Relationship(back_populates="workflow")
     org: Optional[Org] = Relationship(back_populates="workflows")
+
+
+# ---------------------------------------------------------------------------
+# Agent (Epic 3.4)
+# ---------------------------------------------------------------------------
+
+class Agent(SQLModel, table=True):
+    __tablename__ = "agents"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    name: str = Field(index=True)
+    description: Optional[str] = Field(default=None)
+    identity: str = Field(description="The system prompt/identity of the agent")
+    model: str = Field(default="gpt-4o")
+    # Store tools as a comma-separated string or JSON-encoded list
+    tools_json: str = Field(default="[]")
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+
+    # Relationships
+    org: Optional[Org] = Relationship(back_populates="agents")
 
 
 # ---------------------------------------------------------------------------

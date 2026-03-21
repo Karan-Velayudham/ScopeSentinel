@@ -1,5 +1,8 @@
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiFetch } from "@/lib/api-client";
 
 export function ConfigPanel({ selectedNode, updateNodeData }: { selectedNode: any, updateNodeData: (id: string, data: any) => void }) {
     if (!selectedNode) {
@@ -46,16 +49,32 @@ export function ConfigPanel({ selectedNode, updateNodeData }: { selectedNode: an
                 {selectedNode.type === 'agentNode' && (
                     <div className="space-y-2">
                         <Label>Agent Type</Label>
-                        <Input
-                            value={selectedNode.data.agentType || ''}
-                            onChange={(e) => handleChange('agentType', e.target.value)}
-                            placeholder="e.g. planner, coder"
+                        <Select
+                            value={selectedNode.data.agentType || 'planner'}
+                            onValueChange={(v) => handleChange('agentType', v)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="planner">Planner</SelectItem>
+                                <SelectItem value="coder">Coder</SelectItem>
+                                <SelectItem value="analyzer">Analyzer</SelectItem>
+                                <SelectItem value="custom">Custom (Generic)</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        <Label className="pt-2">Specialized Agent (Optional)</Label>
+                        <AgentSelector
+                            value={selectedNode.data.agent_id || ''}
+                            onChange={(v) => handleChange('agent_id', v)}
                         />
-                        <Label className="pt-2">Instructions</Label>
+
+                        <Label className="pt-2">Direct Instructions Override</Label>
                         <Input
                             value={selectedNode.data.instructions || ''}
                             onChange={(e) => handleChange('instructions', e.target.value)}
-                            placeholder="System prompt..."
+                            placeholder="System prompt override..."
                         />
                         <Label className="pt-2">Inputs Bindings</Label>
                         <Input
@@ -68,5 +87,40 @@ export function ConfigPanel({ selectedNode, updateNodeData }: { selectedNode: an
 
             </div>
         </div>
+    );
+}
+
+function AgentSelector({ value, onChange }: { value: string, onChange: (v: string) => void }) {
+    const [agents, setAgents] = useState<any[]>([]);
+
+    useEffect(() => {
+        const fetchAgents = async () => {
+            try {
+                const res = await apiFetch('/api/agents');
+                const data = await res.json();
+                setAgents(data.items || []);
+            } catch (e) {
+                console.error("Failed to fetch agents", e);
+            } finally {
+                // Done loading
+            }
+        };
+        fetchAgents();
+    }, []);
+
+    return (
+        <Select value={value || "none"} onValueChange={(v) => onChange(v === "none" ? "" : v)}>
+            <SelectTrigger>
+                <SelectValue placeholder="Using Default Agent" />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value="none">Use Default {value ? "" : "(Current)"}</SelectItem>
+                {agents.map((agent: any) => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name} ({agent.model})
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
     );
 }

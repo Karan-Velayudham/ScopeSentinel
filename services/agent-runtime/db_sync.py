@@ -61,3 +61,27 @@ async def sync_run_progress(
             logger.info("db.sync_success", run_id=run_id, status=status, total_tokens=prompt_tokens+completion_tokens)
     except Exception as e:
         logger.error("db.sync_failed", error=str(e), run_id=run_id)
+
+async def get_agent(agent_id: str) -> dict:
+    """
+    Fetch agent details from the database.
+    """
+    try:
+        async with engine.connect() as conn:
+            sql = "SELECT id, name, identity, model, tools_json FROM agents WHERE id = :id"
+            result = await conn.execute(text(sql), {"id": agent_id})
+            row = result.fetchone()
+            if not row:
+                return {}
+            
+            # Use column names to build a dict
+            return {
+                "id": row[0],
+                "name": row[1],
+                "identity": row[2],
+                "model": row[3],
+                "tools": json.loads(row[4]) if row[4] else []
+            }
+    except Exception as e:
+        logger.error("db.get_agent_failed", error=str(e), agent_id=agent_id)
+        return {}

@@ -12,7 +12,7 @@ from agents.coder_agent import CoderAgent, CoderOutput
 from agents.analyzer_agent import AnalyzerAgent, AnalyzerOutput
 from exceptions import ConfigurationError
 from io_capture import save_step_io_sync
-from db_sync import sync_run_progress
+from db_sync import sync_run_progress, get_agent
 from tools.mcp_server import index_repository
 
 @activity.defn
@@ -75,7 +75,15 @@ async def planning_activity(args: dict) -> dict:
     
     clients, tool_registry = await load_client_pool("mcp_servers.yaml")
     try:
-        planner = PlannerAgent(model=model)
+        agent_id = args.get("agent_id")
+        custom_prompt = None
+        if agent_id:
+            agent_data = await get_agent(agent_id)
+            if agent_data:
+                custom_prompt = agent_data.get("identity")
+                model_name = agent_data.get("model", model_name)
+        
+        planner = PlannerAgent(model=model, system_prompt=custom_prompt)
         plan: PlannerOutput = await planner.plan(ticket_id, tool_registry)
         
         usage = {
@@ -127,7 +135,15 @@ async def coder_activity(args: dict) -> dict:
             raw_plan=plan_dict["raw_plan"]
         )
         
-        coder = CoderAgent(model=model)
+        agent_id = args.get("agent_id")
+        custom_prompt = None
+        if agent_id:
+            agent_data = await get_agent(agent_id)
+            if agent_data:
+                custom_prompt = agent_data.get("identity")
+                model_name = agent_data.get("model", model_name)
+
+        coder = CoderAgent(model=model, system_prompt=custom_prompt)
         coder_res: CoderOutput = await coder.code_with_validation(
             ticket_id=ticket_id,
             ticket_content=ticket_content,
@@ -175,6 +191,14 @@ async def analyzer_activity(args: dict) -> dict:
     model = _build_model(model_name)
     
     try:
+        agent_id = args.get("agent_id")
+        custom_prompt = None
+        if agent_id:
+            agent_data = await get_agent(agent_id)
+            if agent_data:
+                custom_prompt = agent_data.get("identity")
+                model_name = agent_data.get("model", model_name)
+
         reconstructed_plan = PlannerOutput(
             ticket_id=ticket_id,
             summary="Approved",
@@ -183,7 +207,7 @@ async def analyzer_activity(args: dict) -> dict:
             raw_plan=plan_dict["raw_plan"]
         )
         
-        analyzer = AnalyzerAgent(model=model)
+        analyzer = AnalyzerAgent(model=model, system_prompt=custom_prompt)
         res = await analyzer.analyze(
             ticket_id=ticket_id,
             ticket_content=ticket_content,

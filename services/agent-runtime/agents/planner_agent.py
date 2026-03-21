@@ -109,8 +109,9 @@ class PlannerAgent:
     agnostic to which MCP server provides each tool.
     """
 
-    def __init__(self, model: OpenAIChatModel):
+    def __init__(self, model: OpenAIChatModel, system_prompt: str = None):
         self.model = model
+        self.system_prompt = system_prompt or SYSTEM_PROMPT
 
     async def plan(
         self,
@@ -142,7 +143,7 @@ class PlannerAgent:
             raise MCPToolCallError(f"fetch_jira_ticket failed: {exc}") from exc
 
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": _build_user_message(ticket_content)},
         ]
 
@@ -204,7 +205,7 @@ class PlannerAgent:
             raise MCPToolCallError(f"fetch_jira_ticket failed during replan: {exc}") from exc
 
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": _build_user_message(ticket_content)},
             {"role": "assistant", "content": previous_plan.raw_plan},
             {

@@ -144,6 +144,7 @@ class WorkflowStepDSL(BaseModel):
     id: str = Field(description="Unique step ID within this workflow")
     type: Literal["trigger", "agent", "tool", "condition", "hitl", "delay"]
     name: str
+    agent_id: Optional[str] = Field(default=None, description="Reference to a custom agent")
     inputs: dict[str, Any] = Field(default_factory=dict)
     next: Optional[list[str]] = Field(default_factory=list, description="IDs of next steps")
 
@@ -202,3 +203,37 @@ class DashboardStatsResponse(BaseModel):
     workflows_executed: int
     pending_hitl: int
     success_rate: float
+
+
+# ---------------------------------------------------------------------------
+# Agents (Epic 3.4)
+# ---------------------------------------------------------------------------
+
+class AgentCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    identity: str
+    model: str = "gpt-4o"
+    tools: list[str] = Field(default_factory=list)
+
+class AgentUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    identity: Optional[str] = None
+    model: Optional[str] = None
+    tools: Optional[list[str]] = None
+
+class AgentResponse(BaseModel):
+    id: str
+    org_id: str
+    name: str
+    description: Optional[str]
+    identity: str
+    model: str
+    tools: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+class AgentListResponse(BaseModel):
+    items: list[AgentResponse]
+    meta: PaginationMeta

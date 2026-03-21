@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from db.seed import run_seed
 from db.session import SessionDep, create_db_and_tables, get_session
-from routers import health, runs, workflows, connectors
+from routers import health, runs, workflows, connectors, agents
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -102,6 +102,7 @@ app.include_router(runs.router)
 app.include_router(health.router)
 app.include_router(workflows.router)
 app.include_router(connectors.router)
+app.include_router(agents.router)
 
 
 @app.get("/", include_in_schema=False)
