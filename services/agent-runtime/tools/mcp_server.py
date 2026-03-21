@@ -8,6 +8,8 @@ from mcp.server.fastmcp import FastMCP
 from tools.jira_tool import JiraTool
 from tools.git_tool import GitTool
 from tools.github_tool import GithubTool
+from tools.search_tool import search_codebase
+from knowledge.ingest import ingest_directory, init_collection
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,22 @@ def create_pull_request(ticket_id: str, plan: str, branch_name: str) -> str:
         return f"PR created: {pr.pr_url}"
     except Exception as e:
         return f"Failed to create PR: {e}"
+
+@mcp.tool()
+async def index_repository(directory: str, repo_id: str) -> str:
+    """Index a repository for semantic search."""
+    from pathlib import Path
+    try:
+        await init_collection()
+        await ingest_directory(Path(directory), repo_id)
+        return f"Repository indexed: {repo_id}"
+    except Exception as e:
+        return f"Failed to index repository: {e}"
+
+@mcp.tool()
+async def search_index(query: str, repo_id: str = None) -> str:
+    """Search the indexed codebase for relevant snippets."""
+    return await search_codebase(query, repo_id)
 
 if __name__ == "__main__":
     mcp.run()

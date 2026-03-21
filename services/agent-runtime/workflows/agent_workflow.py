@@ -62,12 +62,32 @@ class AgentWorkflow:
             retry_policy=default_retry_policy,
         )
 
+        # Step 5: Audit (NEW Epic 4.3)
+        analyzer_res = await workflow.execute_activity(
+            "analyzer_activity",
+            {
+                "ticket_id": ticket_id,
+                "ticket_content": ticket_content,
+                "plan_dict": plan_dict,
+                "files_written": coder_res.get("files_written", []),
+                "workspace_path": "/app/workspace", # Default in docker
+                "model_name": model_name
+            },
+            start_to_close_timeout=timedelta(minutes=5),
+            retry_policy=default_retry_policy,
+        )
+
         return {
             "ticket_id": ticket_id,
             "status": "completed",
             "files_written": coder_res.get("files_written", []),
+            "analysis": {
+                "passed": analyzer_res.get("passed", False),
+                "feedback": analyzer_res.get("feedback", "")
+            },
             "usage": {
                 "planning": plan_dict.get("usage"),
-                "coder": coder_res.get("usage")
+                "coder": coder_res.get("usage"),
+                "analyzer": analyzer_res.get("usage")
             }
         }

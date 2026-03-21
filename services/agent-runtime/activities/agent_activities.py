@@ -9,9 +9,16 @@ with activity.unsafe.imports_passed_through():
     from mcp_pool import load_client_pool
     from agents.planner_agent import PlannerAgent, PlannerOutput
     from agents.coder_agent import CoderAgent, CoderOutput
+    from agents.analyzer_agent import AnalyzerAgent, AnalyzerOutput
     from exceptions import ConfigurationError
     from io_capture import save_step_io_sync
     from db_sync import sync_run_progress
+    from tools.mcp_server import index_repository
+
+@activity.defn
+async def index_repo_activity(directory: str, repo_id: str) -> str:
+    """Index a repository for semantic search."""
+    return await index_repository(directory, repo_id)
 
 def _get_run_id() -> str:
     wf_id = activity.info().workflow_id
@@ -150,3 +157,58 @@ async def coder_activity(args: dict) -> dict:
     finally:
         for client in clients:
             await client.close()
+
+@activity.defn
+async def analyzer_activity(args: dict) -> dict:
+    run_id = _get_run_id()
+    await sync_run_progress(run_id, status="RUNNING")
+    await _save_io("analyzer", args, True)
+    
+    ticket_id = args["ticket_id"]
+    ticket_content = args["ticket_content"]
+    plan_dict = args["plan_dict"]
+    files_written = args["files_written"]
+    workspace_path = args["workspace_path"]
+    model_name = args.get("model_name", "gpt-4o")
+    
+    agentscope.init(project="ScopeSentinel", name="AnalyzerRun")
+    model = _build_model(model_name)
+    
+    try:
+        reconstructed_plan = PlannerOutput(
+            ticket_id=ticket_id,
+            summary="Approved",
+            steps=plan_dict["steps"],
+            architecture_notes=plan_dict.get("architecture_notes", ""),
+            raw_plan=plan_dict["raw_plan"]
+        )
+        
+        analyzer = AnalyzerAgent(model=model)
+        res = await analyzer.analyze(
+            ticket_id=ticket_id,
+            ticket_content=ticket_content,
+            plan=reconstructed_plan,
+            files_written=files_written,
+            workspace_path=workspace_path
+        )
+        
+        result = {
+            "passed": res.passed,
+            "feedback": res.feedback,
+            "usage": {
+                "prompt_tokens": res.prompt_tokens,
+                "completion_tokens": res.completion_tokens,
+                "total_tokens": res.total_tokens
+            }
+        }
+        
+        await sync_run_progress(
+            run_id, 
+            status="SUCCEEDED",
+            prompt_tokens=res.prompt_tokens, 
+            completion_tokens=res.completion_tokens
+        )
+        await _save_io("analyzer", result, False)
+        return result
+    finally:
+        pass

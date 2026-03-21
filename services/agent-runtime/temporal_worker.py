@@ -8,6 +8,8 @@ from activities.agent_activities import (
     fetch_ticket_activity,
     planning_activity,
     coder_activity,
+    index_repo_activity,
+    analyzer_activity,
 )
 
 async def main():
@@ -32,6 +34,8 @@ async def main():
             fetch_ticket_activity,
             planning_activity,
             coder_activity,
+            index_repo_activity,
+            analyzer_activity,
         ],
     )
     await worker.run()

@@ -8,6 +8,11 @@ model_list:
       model: anthropic/claude-3-5-sonnet-20240620
       api_key: "os.environ/ANTHROPIC_API_KEY"
 
+  - model_name: text-embedding-3-small
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: "os.environ/OPENAI_API_KEY"
+
 router_settings:
   routing_strategy: simple-shuffle
   set_verbose: True

@@ -51,6 +51,7 @@ Rules:
 - Include file paths, function names, or component names where relevant.
 - Do not include steps outside of software implementation (e.g. no "discuss with team").
 - If acceptance criteria are provided, map them to specific steps.
+- **NEW**: You have access to a `search_index` tool. Use it to find relevant code snippets in the codebase to make your plan more accurate and detailed.
 """
 
 
