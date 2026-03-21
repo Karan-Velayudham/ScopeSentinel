@@ -145,7 +145,8 @@ async def trigger_run(
             "AgentWorkflow",
             run.ticket_id,
             id=f"agent-workflow-{run.id}",
-            task_queue="agent-task-queue"
+            task_queue="agent-task-queue",
+            args=[run.ticket_id, body.model or "gpt-4o"]
         )
     except Exception as e:
         log.error("api.temporal_dispatch_failed", error=str(e))

@@ -25,6 +25,9 @@ class PlannerOutput:
     steps: list[str]               # Individual implementation steps
     architecture_notes: str        # High-level design / architectural notes
     raw_plan: str                  # Full LLM response for audit/reference
+    total_tokens: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 SYSTEM_PROMPT = """\
@@ -147,9 +150,13 @@ class PlannerAgent:
         except Exception as exc:
             raise LLMResponseError(f"LLM call failed in PlannerAgent.plan: {exc}") from exc
 
+        # Extract usage from AgentScope response
+        it = response.usage.get("input_tokens", 0) if response.usage else 0
+        ot = response.usage.get("output_tokens", 0) if response.usage else 0
+
         raw_plan = _extract_text(response)
         steps, architecture_notes = _parse_plan(raw_plan)
-        log.info("planner.plan_ready", num_steps=len(steps))
+        log.info("planner.plan_ready", num_steps=len(steps), tokens=it + ot)
 
         return PlannerOutput(
             ticket_id=ticket_id,
@@ -157,6 +164,9 @@ class PlannerAgent:
             steps=steps,
             architecture_notes=architecture_notes,
             raw_plan=raw_plan,
+            prompt_tokens=it,
+            completion_tokens=ot,
+            total_tokens=it + ot,
         )
 
     async def replan(
@@ -212,9 +222,13 @@ class PlannerAgent:
         except Exception as exc:
             raise LLMResponseError(f"LLM call failed in PlannerAgent.replan: {exc}") from exc
 
+        # Extract usage
+        it = response.usage.get("input_tokens", 0) if response.usage else 0
+        ot = response.usage.get("output_tokens", 0) if response.usage else 0
+
         raw_plan = _extract_text(response)
         steps, architecture_notes = _parse_plan(raw_plan)
-        log.info("planner.replan_ready", num_steps=len(steps))
+        log.info("planner.replan_ready", num_steps=len(steps), tokens=it + ot)
 
         return PlannerOutput(
             ticket_id=ticket_id,
@@ -222,4 +236,7 @@ class PlannerAgent:
             steps=steps,
             architecture_notes=architecture_notes,
             raw_plan=raw_plan,
+            prompt_tokens=it,
+            completion_tokens=ot,
+            total_tokens=it + ot,
         )

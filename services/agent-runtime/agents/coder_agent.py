@@ -100,6 +100,9 @@ class CoderOutput:
     workspace_path: str        # Absolute path to the workspace directory
     files_written:  list[str] = field(default_factory=list)  # relative paths
     raw_response:   str = ""
+    total_tokens:   int = 0
+    prompt_tokens:  int = 0
+    completion_tokens: int = 0
 
 
 class CoderAgent:
@@ -191,11 +194,18 @@ class CoderAgent:
             files_written.append(rel_path)
             log.info("coder.file_written", path=rel_path)
 
+        it = response.usage.get("input_tokens", 0) if response.usage else 0
+        ot = response.usage.get("output_tokens", 0) if response.usage else 0
+        log.info("coder.generation_ready", tokens=it + ot)
+
         return CoderOutput(
             ticket_id=ticket_id,
             workspace_path=str(workspace.resolve()),
             files_written=files_written,
             raw_response=raw,
+            prompt_tokens=it,
+            completion_tokens=ot,
+            total_tokens=it + ot,
         )
 
     async def code_with_validation(
@@ -293,6 +303,10 @@ class CoderAgent:
                 except Exception as exc:
                     raise LLMResponseError(f"LLM correction call failed: {exc}") from exc
 
+                # Extract usage
+                it_c = response.usage.get("input_tokens", 0) if response.usage else 0
+                ot_c = response.usage.get("output_tokens", 0) if response.usage else 0
+
                 raw = ""
                 if hasattr(response, "content") and isinstance(response.content, list):
                     for block in response.content:
@@ -319,6 +333,9 @@ class CoderAgent:
                     workspace_path=str(workspace),
                     files_written=files_written,
                     raw_response=raw,
+                    prompt_tokens=output.prompt_tokens + it_c,
+                    completion_tokens=output.completion_tokens + ot_c,
+                    total_tokens=output.total_tokens + it_c + ot_c,
                 )
 
         # 3. Commit, Push, and Create PR via tool registry

@@ -148,6 +148,12 @@ class WorkflowRun(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
     updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 
+    # Token usage (Phase 4)
+    total_tokens: Optional[int] = Field(default=None)
+    prompt_tokens: Optional[int] = Field(default=None)
+    completion_tokens: Optional[int] = Field(default=None)
+    estimated_cost: Optional[float] = Field(default=None)
+
     # Relationships
     org: Optional[Org] = Relationship(back_populates="runs")
     workflow: Optional[Workflow] = Relationship(back_populates="runs")
@@ -172,6 +178,12 @@ class RunStep(SQLModel, table=True):
     error_message: Optional[str] = Field(default=None)
     started_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
     finished_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
+
+    # Token usage (Phase 4)
+    total_tokens: Optional[int] = Field(default=None)
+    prompt_tokens: Optional[int] = Field(default=None)
+    completion_tokens: Optional[int] = Field(default=None)
+    estimated_cost: Optional[float] = Field(default=None)
 
     # Relationship
     run: Optional[WorkflowRun] = Relationship(back_populates="steps")

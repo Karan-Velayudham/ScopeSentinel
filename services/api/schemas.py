@@ -37,6 +37,10 @@ class TriggerRunRequest(BaseModel):
         default=False,
         description="If true, run planner + HITL only; skip code generation and git push",
     )
+    model: Optional[str] = Field(
+        default="gpt-4o",
+        description="LLM model to use for this run (passed to LiteLLM)",
+    )
 
 
 class DecisionRequest(BaseModel):

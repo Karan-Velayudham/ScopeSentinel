@@ -25,7 +25,7 @@ class AgentWorkflow:
         self.hitl_decision = decision
 
     @workflow.run
-    async def run(self, ticket_id: str) -> dict:
+    async def run(self, ticket_id: str, model_name: str = "gpt-4o") -> dict:
         # Step 1: Fetch Ticket
         ticket_content = await workflow.execute_activity(
             fetch_ticket_activity,
@@ -37,7 +37,7 @@ class AgentWorkflow:
         # Step 2: Plan
         plan_dict = await workflow.execute_activity(
             planning_activity,
-            {"ticket_id": ticket_id, "ticket_content": ticket_content},
+            {"ticket_id": ticket_id, "ticket_content": ticket_content, "model_name": model_name},
             start_to_close_timeout=timedelta(minutes=5),
             retry_policy=default_retry_policy,
         )
@@ -50,9 +50,14 @@ class AgentWorkflow:
             return {"ticket_id": ticket_id, "status": "rejected"}
 
         # Step 4: Code
-        files_written = await workflow.execute_activity(
+        coder_res = await workflow.execute_activity(
             coder_activity,
-            {"ticket_id": ticket_id, "ticket_content": ticket_content, "plan_dict": plan_dict},
+            {
+                "ticket_id": ticket_id,
+                "ticket_content": ticket_content,
+                "plan_dict": plan_dict,
+                "model_name": model_name
+            },
             start_to_close_timeout=timedelta(minutes=10),
             retry_policy=default_retry_policy,
         )
@@ -60,5 +65,9 @@ class AgentWorkflow:
         return {
             "ticket_id": ticket_id,
             "status": "completed",
-            "files_written": files_written
+            "files_written": coder_res.get("files_written", []),
+            "usage": {
+                "planning": plan_dict.get("usage"),
+                "coder": coder_res.get("usage")
+            }
         }
