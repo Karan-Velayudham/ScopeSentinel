@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Database, Github, Key, Link as LinkIcon, Monitor, RefreshCw, Slack } from "lucide-react"
+import { Database, Github, Key, Link as LinkIcon, Monitor, Slack } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { apiFetch } from "@/lib/api-client"
 
 const getIconForCategory = (category: string) => {
     switch (category) {
@@ -23,39 +24,50 @@ export default function IntegrationsPage() {
 
     const fetchData = async () => {
         try {
-            const resAvail = await fetch('http://localhost:8000/api/connectors/available')
-            const avail = await resAvail.json()
-            setAvailable(avail)
-
-            const resInst = await fetch('http://localhost:8000/api/connectors/installed')
-            const inst = await resInst.json()
-            setInstalled(inst)
-
-            setLoading(false)
+            const [resAvail, resInst] = await Promise.all([
+                apiFetch('/api/connectors/available'),
+                apiFetch('/api/connectors/installed'),
+            ])
+            setAvailable(await resAvail.json())
+            setInstalled(await resInst.json())
         } catch (e) {
             console.error("Failed to fetch connectors", e)
+        } finally {
             setLoading(false)
         }
     }
 
-    useEffect(() => {
-        fetchData()
-    }, [])
+    useEffect(() => { fetchData() }, [])
 
     const handleConnect = async (connectorId: string) => {
         try {
-            const res = await fetch(`http://localhost:8000/api/connectors/${connectorId}/install`, {
+            const res = await apiFetch(`/api/connectors/${connectorId}/install`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ config: { token: "mock_token" } })
+                body: JSON.stringify({ config: { token: "mock_token" } }),
             })
             if (res.ok) {
-                fetchData() // refresh
+                fetchData()
             } else {
-                alert("Failed to install connector or already installed.")
+                const err = await res.json()
+                alert(err.detail || "Failed to install connector.")
             }
         } catch (e) {
             alert("Error installing connector")
+        }
+    }
+
+    // m-3 fix: Add disconnect/uninstall handler
+    const handleDisconnect = async (connectorId: string) => {
+        if (!confirm(`Remove ${connectorId} connector?`)) return
+        try {
+            const res = await apiFetch(`/api/connectors/${connectorId}/uninstall`, { method: 'DELETE' })
+            if (res.ok || res.status === 204) {
+                fetchData()
+            } else {
+                alert("Failed to uninstall connector.")
+            }
+        } catch (e) {
+            alert("Error removing connector")
         }
     }
 
@@ -66,15 +78,17 @@ export default function IntegrationsPage() {
             <div className="flex items-center justify-between border-b pb-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">App Marketplace</h1>
-                    <p className="text-muted-foreground mt-1">Discover and install connectors to use tools inside your Agentic Workflows.</p>
+                    <p className="text-muted-foreground mt-1">
+                        Discover and install connectors to use tools inside your Agentic Workflows.
+                    </p>
                 </div>
+                <Badge variant="secondary">{available.length} connectors available</Badge>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {available.map((connector) => {
-                    const instEntry = installed.find(i => i.connector_id === connector.id)
+                    const instEntry = installed.find((i: any) => i.connector_id === connector.id)
                     const isConnected = !!instEntry
-                    const isHealthy = isConnected && instEntry.is_active
                     const Icon = getIconForCategory(connector.category)
 
                     return (
@@ -94,14 +108,21 @@ export default function IntegrationsPage() {
                                 <CardDescription className="line-clamp-2 min-h-[40px]">{connector.description}</CardDescription>
                             </CardHeader>
                             <CardContent className="flex-1">
-                                <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                    <Badge variant="secondary">{connector.category}</Badge>
-                                </div>
+                                <Badge variant="secondary">{connector.category}</Badge>
                             </CardContent>
-                            <CardFooter className="pt-4 border-t gap-2">
+                            <CardFooter className="pt-4 border-t flex gap-2">
                                 {isConnected ? (
                                     <>
-                                        <Button variant="outline" className="w-full">Configure Settings</Button>
+                                        <Button variant="outline" className="flex-1" size="sm">Configure</Button>
+                                        {/* m-3 fix: Wire Remove/Disconnect button */}
+                                        <Button
+                                            variant="destructive"
+                                            className="flex-1"
+                                            size="sm"
+                                            onClick={() => handleDisconnect(connector.id)}
+                                        >
+                                            Remove
+                                        </Button>
                                     </>
                                 ) : (
                                     <Button className="w-full" onClick={() => handleConnect(connector.id)}>
