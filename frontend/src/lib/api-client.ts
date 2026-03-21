@@ -3,7 +3,7 @@
  * Injects auth headers and base URL consistently across all fetch calls.
  */
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'dev-key-1'
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'dev-admin-api-key-1'
 
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
     return fetch(`${API_BASE}${path}`, {

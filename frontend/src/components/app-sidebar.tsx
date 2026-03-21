@@ -72,11 +72,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <SidebarMenu>
                     {data.navMain.map((item) => (
                         <SidebarMenuItem key={item.title}>
-                            <SidebarMenuButton asChild tooltip={item.title}>
-                                <a href={item.url}>
-                                    <item.icon />
-                                    <span>{item.title}</span>
-                                </a>
+                            <SidebarMenuButton tooltip={item.title} render={<a href={item.url} />}>
+                                <item.icon />
+                                <span>{item.title}</span>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                     ))}
@@ -101,8 +99,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                 </Button>
                             </div>
                         ) : (
-                            <Button variant="default" className="w-full" onClick={() => signIn("keycloak")}>
-                                Sign In
+                            <Button variant="default" className="w-full" onClick={() => signIn("mock", { callbackUrl: "/" })}>
+                                Sign In (Dev Mode)
                             </Button>
                         )}
                     </SidebarMenuItem>
