@@ -1,3 +1,4 @@
+from typing import Any
 """Prometheus connector stub."""
 from connectors.base import BaseConnector
 from schemas import ConnectorInfo

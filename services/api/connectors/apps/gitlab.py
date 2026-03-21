@@ -1,4 +1,4 @@
-"""GitLab connector stub."""
+from typing import Any
 from connectors.base import BaseConnector
 from schemas import ConnectorInfo
 
