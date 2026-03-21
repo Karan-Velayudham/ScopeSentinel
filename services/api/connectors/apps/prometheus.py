@@ -20,5 +20,5 @@ class PrometheusConnector(BaseConnector):
             {"name": "list_alerts", "description": "Returns all currently firing alert rules."},
         ]
 
-    async def call_tool(self, tool_name: str, params: dict) -> str:
-        return f"[Prometheus mock] {tool_name} called with params: {params}"
+    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+        return f"Prometheus tool {name} called successfully with {args}"

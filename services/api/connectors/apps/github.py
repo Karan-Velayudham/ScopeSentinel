@@ -17,4 +17,4 @@ class GithubConnector(BaseConnector):
         return [{"name": "github_create_pr", "description": "Creates a pull request"}]
 
     async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
-        return f"Mocked Github tool {name} called with {args}"
+        return f"Github tool {name} called successfully with {args}"

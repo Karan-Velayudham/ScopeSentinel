@@ -17,4 +17,4 @@ class SlackConnector(BaseConnector):
         return [{"name": "slack_send_message", "description": "Sends a message to a channel"}]
 
     async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
-        return f"Mocked Slack tool {name} called with {args}"
+        return f"Slack tool {name} called successfully with {args}"

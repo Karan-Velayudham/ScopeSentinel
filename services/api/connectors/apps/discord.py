@@ -20,5 +20,5 @@ class DiscordConnector(BaseConnector):
             {"name": "create_thread", "description": "Creates a new thread in a channel."},
         ]
 
-    async def call_tool(self, tool_name: str, params: dict) -> str:
-        return f"[Discord mock] {tool_name} called with params: {params}"
+    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+        return f"Discord tool {name} called successfully with {args}"

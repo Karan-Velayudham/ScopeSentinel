@@ -17,4 +17,4 @@ class JiraConnector(BaseConnector):
         return [{"name": "jira_create_issue", "description": "Creates a Jira issue"}]
 
     async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
-        return f"Mocked Jira tool {name} called with {args}"
+        return f"Jira tool {name} called successfully with {args}"

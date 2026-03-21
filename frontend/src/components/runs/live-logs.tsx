@@ -1,36 +1,37 @@
-"use client"
-
 import { useEffect, useRef, useState } from "react"
 
-const MOCK_LOGS = [
-    "[2026-03-21T10:00:00Z] INFO (orchestrator): Starting run run-123 for ticket SCRUM-8",
-    "[2026-03-21T10:00:01Z] DEBUG (mcp): Connecting to GitHub MCP server...",
-    "[2026-03-21T10:00:02Z] INFO (mcp): Successfully connected to GitHub",
-    "[2026-03-21T10:00:15Z] INFO (agent-planner): Analyzing ticket context and codebase...",
-    "[2026-03-21T10:00:40Z] WARN (agent-planner): Re-requesting LLM due to schema validation failure",
-    "[2026-03-21T10:01:05Z] INFO (agent-planner): Implementation plan generated successfully",
-    "[2026-03-21T10:02:40Z] INFO (hitl): Pinging user for plan approval",
-    "[2026-03-21T10:03:50Z] INFO (hitl): Plan approved by user",
-    "[2026-03-21T10:03:52Z] INFO (agent-coder): Executing file edits...",
-]
+const API_BASE_WS = process.env.NEXT_PUBLIC_API_URL_WS || 'ws://localhost:8000'
 
-export function LiveLogs({ runId: _runId }: { runId: string }) {
+export function LiveLogs({ runId }: { runId: string }) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [logs, setLogs] = useState<string[]>([]);
+    const [connected, setConnected] = useState(false);
 
     useEffect(() => {
-        let i = 0;
-        const interval = setInterval(() => {
-            if (i < MOCK_LOGS.length) {
-                setLogs(prev => [...prev, MOCK_LOGS[i]]);
-                i++;
-            } else {
-                clearInterval(interval);
-            }
-        }, 800);
+        const ws = new WebSocket(`${API_BASE_WS}/api/runs/${runId}/logs`);
 
-        return () => clearInterval(interval);
-    }, []);
+        ws.onopen = () => {
+            console.log("WebSocket connected");
+            setConnected(true);
+        };
+
+        ws.onmessage = (event) => {
+            setLogs(prev => [...prev, event.data]);
+        };
+
+        ws.onclose = () => {
+            console.log("WebSocket disconnected");
+            setConnected(false);
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error", error);
+        };
+
+        return () => {
+            ws.close();
+        };
+    }, [runId]);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -56,13 +57,18 @@ export function LiveLogs({ runId: _runId }: { runId: string }) {
                     </div>
                 )
             })}
-            {logs.length < MOCK_LOGS.length && (
+            {!connected && logs.length === 0 && (
                 <div className="flex items-center gap-2 text-zinc-500 mt-2">
                     <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-zinc-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-zinc-500"></span>
                     </span>
-                    Waiting for logs...
+                    Connecting to log stream...
+                </div>
+            )}
+            {connected && logs.length === 0 && (
+                <div className="text-zinc-500 italic mt-2">
+                    Connected. Waiting for logs...
                 </div>
             )}
         </div>

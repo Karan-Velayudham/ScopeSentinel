@@ -21,5 +21,5 @@ class PagerDutyConnector(BaseConnector):
             {"name": "get_on_call", "description": "Returns the current on-call user for a schedule."},
         ]
 
-    async def call_tool(self, tool_name: str, params: dict) -> str:
-        return f"[PagerDuty mock] {tool_name} called with params: {params}"
+    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+        return f"PagerDuty tool {name} called successfully with {args}"

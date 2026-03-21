@@ -96,9 +96,7 @@ migrate: install-api
 
 # ── Seed the database ─────────────────────────────────────────────────────────
 seed: install-api
-	cd $(API_DIR) && "$(abspath $(API_PYTHON))" -c \
-		"import asyncio; from db.seed import run_seed; from db.session import get_session; \
-		 asyncio.run(run_seed(next(get_session())))"
+	cd $(API_DIR) && "$(abspath $(API_PYTHON))" seed_db.py
 
 # ── Agent runtime tests (with coverage gate) ─────────────────────────────────
 test: install

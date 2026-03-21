@@ -43,7 +43,7 @@ export default function IntegrationsPage() {
         try {
             const res = await apiFetch(`/api/connectors/${connectorId}/install`, {
                 method: 'POST',
-                body: JSON.stringify({ config: { token: "mock_token" } }),
+                body: JSON.stringify({ config: { token: "" } }),
             })
             if (res.ok) {
                 fetchData()

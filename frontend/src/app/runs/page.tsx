@@ -79,9 +79,7 @@ export default function RunsPage() {
                         Refresh
                     </Button>
                     <Dialog open={triggerOpen} onOpenChange={setTriggerOpen}>
-                        <DialogTrigger>
-                            <Button>Trigger New Run</Button>
-                        </DialogTrigger>
+                        <DialogTrigger render={<Button>Trigger New Run</Button>} />
                         <DialogContent>
                             <DialogHeader>
                                 <DialogTitle>Trigger a New Workflow Run</DialogTitle>

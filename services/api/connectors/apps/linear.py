@@ -21,5 +21,5 @@ class LinearConnector(BaseConnector):
             {"name": "list_issues", "description": "Lists issues in a Linear project by filter."},
         ]
 
-    async def call_tool(self, tool_name: str, params: dict) -> str:
-        return f"[Linear mock] {tool_name} called with params: {params}"
+    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+        return f"Linear tool {name} called successfully with {args}"

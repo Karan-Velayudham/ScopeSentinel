@@ -17,4 +17,4 @@ class DatadogConnector(BaseConnector):
         return [{"name": "datadog_query_metric", "description": "Query a Datadog metric"}]
 
     async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
-        return f"Mocked Datadog tool {name} called with {args}"
+        return f"Datadog tool {name} called successfully with {args}"

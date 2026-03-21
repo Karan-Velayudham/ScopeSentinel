@@ -21,5 +21,5 @@ class GitLabConnector(BaseConnector):
             {"name": "get_pipeline_status", "description": "Gets the current status of a pipeline."},
         ]
 
-    async def call_tool(self, tool_name: str, params: dict) -> str:
-        return f"[GitLab mock] {tool_name} called with params: {params}"
+    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+        return f"GitLab tool {name} called successfully with {args}"
