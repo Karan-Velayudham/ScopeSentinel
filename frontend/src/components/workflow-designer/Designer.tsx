@@ -102,21 +102,28 @@ export function DesignerComponent({
 
     const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
+    const [testRunOpen, setTestRunOpen] = useState(false);
+    const [testTicketId, setTestTicketId] = useState("");
+
     const handleTestRun = async () => {
+        if (!testTicketId.trim()) return;
+        setTestRunOpen(false);
         try {
             const res = await fetch(`http://localhost:8000/api/runs`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ticket_id: "SCRUM-8", dry_run: false })
+                headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'dev-key-1' },
+                body: JSON.stringify({ ticket_id: testTicketId.trim(), dry_run: false })
             });
             if (res.ok) {
                 const data = await res.json();
                 alert(`Test run initiated! Run ID: ${data.run_id}`);
             } else {
-                alert("Test run failed.");
+                alert("Test run failed. Check Temporal is running.");
             }
         } catch (e) {
             alert("Error initiating test run.");
+        } finally {
+            setTestTicketId("");
         }
     };
 
@@ -127,9 +134,10 @@ export function DesignerComponent({
                     <span>Visual Workflow Designer</span>
                 </div>
                 <div className="flex gap-2">
+                    {/* M-2 Fix: Prompt for ticket_id via dialog instead of hardcoding */}
                     <button
                         className="px-3 py-1.5 text-sm border bg-card text-foreground rounded-md hover:bg-muted/50 transition-colors cursor-pointer"
-                        onClick={handleTestRun}
+                        onClick={() => setTestRunOpen(true)}
                     >
                         Test Run
                     </button>
@@ -141,6 +149,39 @@ export function DesignerComponent({
                     </button>
                 </div>
             </div>
+            {/* Test Run Dialog */}
+            {testRunOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+                    <div className="bg-card border rounded-lg shadow-xl p-6 w-96 space-y-4">
+                        <h3 className="font-semibold text-lg">Trigger Test Run</h3>
+                        <p className="text-sm text-muted-foreground">Enter a Jira ticket ID to trigger a test run of this workflow.</p>
+                        <input
+                            type="text"
+                            className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                            placeholder="e.g. SCRUM-8"
+                            value={testTicketId}
+                            onChange={e => setTestTicketId(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleTestRun()}
+                            autoFocus
+                        />
+                        <div className="flex gap-2 justify-end">
+                            <button
+                                className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted/50"
+                                onClick={() => { setTestRunOpen(false); setTestTicketId(""); }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+                                onClick={handleTestRun}
+                                disabled={!testTicketId.trim()}
+                            >
+                                Start Run
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="flex flex-1 overflow-hidden">
                 <Sidebar />
                 <div className="flex-1 h-full" ref={reactFlowWrapper}>

@@ -231,9 +231,10 @@ async def submit_decision(
     """
     Submit a HITL decision for a run that is in WAITING_HITL status.
 
-    The Celery worker task is paused on a Redis pub/sub channel. This
-    endpoint writes the HitlEvent to DB and publishes to that channel
-    so the worker can resume.
+    Writes the HitlEvent to DB, then sends a `hitl-decision-signal` Signal to
+    the running Temporal workflow identified by `agent-workflow-{run_id}`.
+    The workflow is paused at a `workflow.wait_condition()` and will resume
+    based on the action (approve/reject/modify).
     """
     run = await _get_run_or_404(run_id, current_user.org_id, session)
 

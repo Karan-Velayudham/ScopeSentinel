@@ -112,6 +112,7 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       REDIS_URL: "redis://redis:6379/0"
+      TEMPORAL_ADDRESS: "temporal:7233"
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
@@ -121,6 +122,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      temporal:
+        condition: service_started
 
   # ── Temporal Server ──────────────────────────────────────────────────────────
   temporal:

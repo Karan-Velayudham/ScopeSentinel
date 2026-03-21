@@ -51,20 +51,19 @@ def _workflow_to_response(wf: Workflow) -> WorkflowResponse:
     )
 
 @router.get("/templates", response_model=list[WorkflowResponse])
-async def get_templates():
-    """Return static out-of-the-box workflow templates."""
-    # Dummy template list to satisfy Epic 3.3.3
+async def get_templates(current_user: CurrentUserDep):  # FIX M-3: added auth guard
+    """Return static out-of-the-box workflow templates. FIX M-4: 5 templates."""
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
-    
+
     templates = [
         WorkflowResponse(
             id="tmpl-1",
             org_id="system",
             name="Jira to PR Pipeline",
-            description="Reads Jira ticket, plans, codes, and pushes a PR.",
+            description="Reads a Jira ticket, plans an implementation, generates code, and opens a GitHub PR.",
             version=1,
-            yaml_content="name: Jira to PR Pipeline\ntrigger:\n  type: github\nsteps:\n  - id: 1\n    type: agent\n    name: planner\n",
+            yaml_content="name: Jira to PR Pipeline\ntrigger:\n  type: jira\n  event: issue_created\nsteps:\n  - id: plan\n    type: agent\n    name: Planner\n    inputs:\n      model: gpt-4o\n  - id: code\n    type: agent\n    name: Coder\n    inputs:\n      model: gpt-4o\n  - id: hitl_review\n    type: hitl\n    name: Review Plan\n    next: [code]\n",
             created_at=now,
             updated_at=now,
         ),
@@ -72,12 +71,42 @@ async def get_templates():
             id="tmpl-2",
             org_id="system",
             name="Build Failure Triager",
-            description="Analyzes build logs and proposes a fix.",
+            description="Triggered by a CI failure event. Analyses build logs and proposes a fix as a PR.",
             version=1,
-            yaml_content="name: Build Failure Triager\ntrigger:\n  type: datadog\nsteps: []\n",
+            yaml_content="name: Build Failure Triager\ntrigger:\n  type: datadog\n  event: build_failure\nsteps:\n  - id: analyse\n    type: agent\n    name: Log Analyser\n  - id: patch\n    type: agent\n    name: Patcher\n",
             created_at=now,
             updated_at=now,
-        )
+        ),
+        WorkflowResponse(
+            id="tmpl-3",
+            org_id="system",
+            name="PR Review Agent",
+            description="Automatically reviews open pull requests for code quality, security, and style issues.",
+            version=1,
+            yaml_content="name: PR Review Agent\ntrigger:\n  type: github\n  event: pull_request.opened\nsteps:\n  - id: review\n    type: agent\n    name: Reviewer\n    inputs:\n      model: gpt-4o\n  - id: comment\n    type: tool\n    name: Post GitHub Comment\n",
+            created_at=now,
+            updated_at=now,
+        ),
+        WorkflowResponse(
+            id="tmpl-4",
+            org_id="system",
+            name="Incident Responder",
+            description="Triggered by a PagerDuty alert. Creates a Jira incident ticket and posts a Slack triage thread.",
+            version=1,
+            yaml_content="name: Incident Responder\ntrigger:\n  type: webhook\n  source: pagerduty\nsteps:\n  - id: create_ticket\n    type: tool\n    name: Create Jira Issue\n  - id: notify_slack\n    type: tool\n    name: Slack Notification\n",
+            created_at=now,
+            updated_at=now,
+        ),
+        WorkflowResponse(
+            id="tmpl-5",
+            org_id="system",
+            name="Deploy Validator",
+            description="Runs post-deploy checks after a GitHub Actions deployment completes successfully.",
+            version=1,
+            yaml_content="name: Deploy Validator\ntrigger:\n  type: github\n  event: workflow_run.completed\nsteps:\n  - id: smoke_test\n    type: agent\n    name: Smoke Tester\n  - id: notify\n    type: tool\n    name: Slack Notification\n",
+            created_at=now,
+            updated_at=now,
+        ),
     ]
     return templates
 
