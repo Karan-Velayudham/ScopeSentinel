@@ -16,9 +16,16 @@ def _build_url():
 
 engine = create_async_engine(_build_url())
 
-async def sync_run_progress(run_id: str, status: str = None, prompt_tokens: int = 0, completion_tokens: int = 0):
+async def sync_run_progress(
+    run_id: str, 
+    status: str = None, 
+    prompt_tokens: int = 0, 
+    completion_tokens: int = 0,
+    analysis_passed: bool = None,
+    analysis_feedback: str = None
+):
     """
-    Update WorkflowRun status and/or token usage in the database.
+    Update WorkflowRun status, token usage, and/or audit results in the database.
     """
     try:
         async with engine.begin() as conn:
@@ -35,6 +42,14 @@ async def sync_run_progress(run_id: str, status: str = None, prompt_tokens: int 
                 updates.append("total_tokens = COALESCE(total_tokens, 0) + :p + :c")
                 params["p"] = prompt_tokens
                 params["c"] = completion_tokens
+            
+            if analysis_passed is not None:
+                updates.append("analysis_passed = :ap")
+                params["ap"] = analysis_passed
+            
+            if analysis_feedback is not None:
+                updates.append("analysis_feedback = :af")
+                params["af"] = analysis_feedback
             
             if not updates:
                 return

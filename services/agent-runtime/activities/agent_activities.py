@@ -206,7 +206,9 @@ async def analyzer_activity(args: dict) -> dict:
             run_id, 
             status="SUCCEEDED",
             prompt_tokens=res.prompt_tokens, 
-            completion_tokens=res.completion_tokens
+            completion_tokens=res.completion_tokens,
+            analysis_passed=res.passed,
+            analysis_feedback=res.feedback
         )
         await _save_io("analyzer", result, False)
         return result

@@ -65,6 +65,8 @@ class RunResponse(BaseModel):
     dry_run: bool
     created_at: datetime
     updated_at: datetime
+    total_tokens: Optional[int] = 0
+    estimated_cost: Optional[float] = 0.0
 
 
 class StepResponse(BaseModel):
@@ -74,6 +76,8 @@ class StepResponse(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    total_tokens: Optional[int] = 0
+    estimated_cost: Optional[float] = 0.0
 
 
 class HitlEventResponse(BaseModel):
@@ -94,6 +98,12 @@ class RunDetailResponse(BaseModel):
     updated_at: datetime
     steps: list[StepResponse]
     hitl_events: list[HitlEventResponse]
+    total_tokens: Optional[int] = 0
+    prompt_tokens: Optional[int] = 0
+    completion_tokens: Optional[int] = 0
+    estimated_cost: Optional[float] = 0.0
+    analysis_passed: Optional[bool] = None
+    analysis_feedback: Optional[str] = None
 
 
 class PlanResponse(BaseModel):

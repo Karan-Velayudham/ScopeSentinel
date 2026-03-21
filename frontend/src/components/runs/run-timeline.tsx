@@ -59,7 +59,14 @@ export function RunTimeline({ runId }: { runId: string }) {
                         )}>
                             <div className="flex items-center justify-between">
                                 <span className="font-medium text-sm">{step.step_name}</span>
-                                <span className="text-xs text-muted-foreground">{formatTime(step.started_at)}</span>
+                                <div className="flex items-center gap-2">
+                                    {step.total_tokens > 0 && (
+                                        <span className="text-[10px] text-blue-500 font-medium bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-100 dark:border-blue-800">
+                                            {step.total_tokens} tokens
+                                        </span>
+                                    )}
+                                    <span className="text-xs text-muted-foreground">{formatTime(step.started_at)}</span>
+                                </div>
                             </div>
                             {step.error_message && (
                                 <div className="text-xs text-red-500 mt-1 line-clamp-1">
@@ -75,7 +82,7 @@ export function RunTimeline({ runId }: { runId: string }) {
             </div>
 
             <StepDrawer
-                stepId={selectedStep}
+                step={steps.find(s => s.step_id === selectedStep)}
                 open={!!selectedStep}
                 onOpenChange={(val: boolean) => !val && setSelectedStep(null)}
             />

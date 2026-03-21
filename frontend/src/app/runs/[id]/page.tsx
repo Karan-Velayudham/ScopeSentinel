@@ -67,11 +67,32 @@ export default function RunDetailPage() {
                             Ticket: {run.ticket_id} • Started {new Date(run.created_at).toLocaleString()}
                         </p>
                     </div>
-                    <Badge variant={isWaitingHitl ? "destructive" : "default"} className="ml-2">
-                        {run.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                        <Badge variant={isWaitingHitl ? "destructive" : "default"}>
+                            {run.status}
+                        </Badge>
+                        {run.analysis_passed !== null && (
+                            <Badge variant={run.analysis_passed ? "default" : "destructive"} className="bg-opacity-80">
+                                Audit: {run.analysis_passed ? "PASSED" : "FAILED"}
+                            </Badge>
+                        )}
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-6">
+                    {run.total_tokens > 0 && (
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-full border">
+                            <div className="flex items-center gap-1.5">
+                                <Activity className="h-3 w-3 text-blue-500" />
+                                <span>{run.total_tokens.toLocaleString()} tokens</span>
+                            </div>
+                            <div className="h-3 w-px bg-border" />
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-green-600 font-medium">
+                                    ${run.estimated_cost?.toFixed(4) || "0.0000"}
+                                </span>
+                            </div>
+                        </div>
+                    )}
                     <Button variant="outline" size="sm" onClick={fetchData}>
                         <RefreshCw className="mr-2 h-4 w-4" />
                         Refresh
