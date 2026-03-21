@@ -30,7 +30,7 @@ export default function SignInPage() {
                         variant="outline"
                         size="lg"
                         className="w-full h-14 text-base font-medium border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all active:scale-[0.98]"
-                        onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+                        onClick={() => signIn("google", { callbackUrl: "/" })}
                     >
                         <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5 mr-3" />
                         Continue with Google
@@ -40,7 +40,7 @@ export default function SignInPage() {
                         variant="outline"
                         size="lg"
                         className="w-full h-14 text-base font-medium border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all active:scale-[0.98]"
-                        onClick={() => signIn("microsoft-entra-id", { callbackUrl: "/dashboard" })}
+                        onClick={() => signIn("microsoft-entra-id", { callbackUrl: "/" })}
                     >
                         <img src="https://www.microsoft.com/favicon.ico" alt="Microsoft" className="w-5 h-5 mr-3" />
                         Continue with Microsoft
@@ -50,7 +50,7 @@ export default function SignInPage() {
                         variant="outline"
                         size="lg"
                         className="w-full h-14 text-base font-medium border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all active:scale-[0.98]"
-                        onClick={() => signIn("github", { callbackUrl: "/dashboard" })}
+                        onClick={() => signIn("github", { callbackUrl: "/" })}
                     >
                         <Github className="w-5 h-5 mr-3" />
                         Continue with GitHub
