@@ -1,0 +1,33 @@
+# Claude AI Development Rules for ScopeSentinel
+
+When executing tasks, writing code, or generating implementation plans for **ScopeSentinel**, you MUST strictly adhere to the following rules:
+
+## 1. 🏗️ Architectural Constraints
+- **Self-Hosted Preference**: Always suggest open-source, self-hosted infrastructure (e.g., PostgreSQL, Redis, Redpanda, Temporal) over AWS/GCP managed equivalents unless explicitly instructed otherwise.
+- **Monorepo Discipline**: Keep code properly scoped to its service (`services/api/`, `services/agent-runtime/`, `frontend/`). Do not mix dependencies or couple services tightly.
+- **API-First Design**: If implementing a new feature, build the backend FastAPI endpoint and schema first. Ensure it can be operated entirely via `curl` before proposing UI changes.
+
+## 2. 🐍 Python Backend (`services/api/` & `services/agent-runtime/`)
+- **Async By Default**: Use asynchronous programming (`async def`, `await`) for all I/O operations, database queries (via `asyncpg`), and external API calls (via `httpx`).
+- **Type Hinting**: Enforce strict Python type hints everywhere. Use Pydantic/SQLModel for all payload validation and database modeling.
+- **SQLModel & Alembic**:
+  - Always use `sa_type=DateTime(timezone=True)` for datetime fields to ensure compatibility with `asyncpg` and PostgreSQL `TIMESTAMP WITH TIME ZONE`.
+  - Always eagerly load relationships using `selectinload` in async sessions to avoid `MissingGreenlet` lazy-loading errors.
+  - Never write raw SQL for standard CRUD; use SQLModel `select()`.
+- **Logging**: Use `structlog` for all logging (`logger.bind(...)`). Never use `print()` in production services.
+- **Linting**: Ensure code complies with `ruff` standards (`line-length = 100`).
+
+## 3. 🤖 AI Agent Runtime (`services/agent-runtime/`)
+- **Celery Worker**: The agent runtime operates exclusively as a background Celery worker. Do not add HTTP listening endpoints to this service; let `services/api/` handle HTTP.
+- **Human-in-the-Loop (HITL)**: Implement pauses via Redis Pub/Sub, waiting for the API to publish user decisions.
+- **No API Keys in Code**: Never hardcode API keys or secrets. Pull from `os.environ` or a Vault-like configuration store. Avoid logging sensitive data (scrub logs).
+
+## 4. ⚛️ Frontend (`frontend/`)
+- **Framework & Styling**: Use Next.js App Router, TailwindCSS, and `shadcn/ui`. Do not introduce generic component libraries like Material-UI or Bootstrap.
+- **State Management**: Use `React Query` for all server state (API fetching) and `Zustand` for complex client-side state.
+- **Design Aesthetic**: Focus on a dark-mode first, premium developer aesthetic.
+
+## 5. 🛠️ Tooling & Git
+- **Docker First**: Every service must have a lightweight, non-root `Dockerfile` and be runnable via `docker-compose.yml` (`make api`).
+- **Testing Requirements**: Write unit tests using `pytest` and `pytest-mock` for all new backend features. Ensure tests run successfully without a live Postgres database (use `aiosqlite` in memory).
+- **Makefile**: Add all developer commands to the root `Makefile`. Do not assume the developer will remember complex `docker` or `uvicorn` commands. Use absolute paths `$(abspath $(...))` in Makefiles to handle spaces in directory paths seamlessly.
