@@ -1,7 +1,6 @@
 # =============================================================================
-# ScopeSentinel — docker-compose for Phase 1 (Epic 1.1.4 + 1.3.1)
+# ScopeSentinel — docker-compose for Phase 3
 #
-# Phase 1: all infrastructure active by default.
 # Usage:
 #   docker compose up -d                  # start everything
 #   docker compose --profile auth up -d   # also start Keycloak
@@ -42,10 +41,68 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Redpanda (Phase 3 Event Streaming) ───────────────────────────────────────
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: scopesentinel-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+      - --mode dev-container
+    ports:
+      - "18081:18081"
+      - "18082:18082"
+      - "19092:19092"
+      - "19644:9644"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: [ "CMD-SHELL", "rpk cluster health" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Redpanda Console ─────────────────────────────────────────────────────────
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.7.2
+    container_name: scopesentinel-redpanda-console
+    entrypoint: /bin/sh
+    command: -c "echo \"$$CONSOLE_CONFIG_FILE\" > /tmp/config.yml; /app/console"
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda:9092"]
+          schemaRegistry:
+            enabled: true
+            urls: ["http://redpanda:8081"]
+        redpanda:
+          adminApi:
+            enabled: true
+            urls: ["http://redpanda:9644"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
   # ── FastAPI Control Plane ────────────────────────────────────────────────────
   api:
     build:
-      context: ../../services/api
+      context: ./services/api
       dockerfile: Dockerfile
     image: scopesentinel-api:latest
     container_name: scopesentinel-api
@@ -68,7 +125,7 @@ services:
   # ── Celery Worker (Agent Runtime) ────────────────────────────────────────────
   celery-worker:
     build:
-      context: .
+      context: ./services/agent-runtime
       dockerfile: Dockerfile
       target: runtime
     image: scopesentinel-agent-runtime:latest
@@ -94,7 +151,7 @@ services:
   # ── Agent Runtime (CLI mode — kept for backward compat) ──────────────────────
   agent-runtime:
     build:
-      context: .
+      context: ./services/agent-runtime
       dockerfile: Dockerfile
       target: runtime
     image: scopesentinel-agent-runtime:latest
@@ -121,9 +178,43 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_DB: dev-mem
     volumes:
-      - ../../infra/keycloak:/opt/keycloak/data/import
+      - ./infra/keycloak:/opt/keycloak/data/import
     ports:
-      - "8080:8080"
+      - "9080:8080" # changed from 8080 to avoid clash with redpanda-console
+
+  # ── Webhook Receiver (Phase 3) ───────────────────────────────────────────────
+  webhook-receiver:
+    build:
+      context: ./services/webhook-receiver
+      dockerfile: Dockerfile
+    image: scopesentinel-webhook-receiver:latest
+    container_name: scopesentinel-webhook-receiver
+    environment:
+      REDPANDA_BROKERS: "redpanda:9092"
+      WEBHOOK_TOPIC: "incoming-events"
+    ports:
+      - "8001:8001"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  # ── Trigger Engine (Phase 3) ─────────────────────────────────────────────────
+  trigger-engine:
+    build:
+      context: ./services/trigger-engine
+      dockerfile: Dockerfile
+    image: scopesentinel-trigger-engine:latest
+    container_name: scopesentinel-trigger-engine
+    environment:
+      REDPANDA_BROKERS: "redpanda:9092"
+      WEBHOOK_TOPIC: "incoming-events"
+      API_URL: "http://api:8000"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      api:
+        condition: service_started
 
 volumes:
   postgres_data:
+  redpanda_data:
