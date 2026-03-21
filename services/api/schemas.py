@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal, Optional, Any
 
 from pydantic import BaseModel, Field
 
@@ -120,3 +120,44 @@ class HealthResponse(BaseModel):
     postgres: Literal["connected", "unreachable"]
     redis: Literal["connected", "unreachable"]
     version: str = "1.0.0"
+
+# ---------------------------------------------------------------------------
+# Workflows (Epic 3.3)
+# ---------------------------------------------------------------------------
+
+class WorkflowStepDSL(BaseModel):
+    id: str = Field(description="Unique step ID within this workflow")
+    type: Literal["trigger", "agent", "tool", "condition", "hitl", "delay"]
+    name: str
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    next: Optional[list[str]] = Field(default_factory=list, description="IDs of next steps")
+
+class WorkflowDSL(BaseModel):
+    name: str = Field(description="Name of the workflow")
+    description: Optional[str] = None
+    trigger: dict[str, Any] = Field(description="Trigger configuration")
+    steps: list[WorkflowStepDSL]
+
+class WorkflowCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    yaml_content: str = Field(description="The YAML DSL content")
+
+class WorkflowUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    yaml_content: Optional[str] = Field(None, description="The YAML DSL content")
+
+class WorkflowResponse(BaseModel):
+    id: str
+    org_id: str
+    name: str
+    description: Optional[str]
+    version: int
+    yaml_content: str
+    created_at: datetime
+    updated_at: datetime
+
+class WorkflowListResponse(BaseModel):
+    items: list[WorkflowResponse]
+    meta: PaginationMeta

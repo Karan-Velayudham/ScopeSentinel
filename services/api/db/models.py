@@ -94,6 +94,8 @@ class Workflow(SQLModel, table=True):
     org_id: str = Field(foreign_key="orgs.id", index=True)
     name: str = Field(index=True)
     description: Optional[str] = Field(default=None)
+    version: int = Field(default=1)
+    yaml_content: str = Field(default="")
     created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
     updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 
