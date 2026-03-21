@@ -15,6 +15,11 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 # ── Stage 2: runtime image ────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
+# Install system dependencies (git)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create a dedicated non-root user
 RUN useradd --create-home --shell /bin/bash sentinel
 

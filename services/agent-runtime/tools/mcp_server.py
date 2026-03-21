@@ -15,13 +15,32 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP("ScopeSentinel Tools")
 
-jira = JiraTool()
-git = GitTool()
-gh = GithubTool()
+_jira = None
+_git = None
+_gh = None
+
+def get_jira():
+    global _jira
+    if not _jira:
+        _jira = JiraTool()
+    return _jira
+
+def get_git():
+    global _git
+    if not _git:
+        _git = GitTool()
+    return _git
+
+def get_gh():
+    global _gh
+    if not _gh:
+        _gh = GithubTool()
+    return _gh
 
 @mcp.tool()
 def fetch_jira_ticket(ticket_id: str) -> str:
     """Fetch details of a Jira ticket."""
+    jira = get_jira()
     ticket = jira.fetch_ticket(ticket_id)
     return (
         f"Ticket: {ticket.id}\n"
@@ -37,6 +56,7 @@ def update_jira_ticket(ticket_id: str, plan: str) -> str:
     """Update a Jira ticket with the generated implementation plan."""
     from agents.planner_agent import PlannerOutput
     dummy_plan = PlannerOutput(ticket_id=ticket_id, summary="", steps=[], architecture_notes="", raw_plan=plan)
+    jira = get_jira()
     try:
         # Instead of calling JiraTool which expects a structured plan, just use the raw plan string
         issue = jira._client.issue(ticket_id)
@@ -49,6 +69,7 @@ def update_jira_ticket(ticket_id: str, plan: str) -> str:
 @mcp.tool()
 def prepare_git_branch(ticket_id: str) -> str:
     """Prepare a Git branch for the given ticket."""
+    git = get_git()
     try:
         path = git.prepare_branch(ticket_id)
         return f"Branch prepared at {path}"
@@ -58,6 +79,7 @@ def prepare_git_branch(ticket_id: str) -> str:
 @mcp.tool()
 def commit_and_push(ticket_id: str, summary: str) -> str:
     """Commit changes and push the branch."""
+    git = get_git()
     try:
         res = git.commit_and_push(ticket_id, summary)
         return f"Pushed branch {res.branch_name} with commit {res.commit_sha}"
@@ -74,6 +96,7 @@ def create_pull_request(ticket_id: str, plan: str, branch_name: str) -> str:
     ticket = JiraTicket(id=ticket_id, summary=f"PR for {ticket_id}", description="", issue_type="Task", status="Open", acceptance_criteria="")
     dummy_plan = PlannerOutput(ticket_id=ticket_id, summary="", steps=[], architecture_notes="", raw_plan=plan)
     
+    gh = get_gh()
     try:
         pr = gh.create_pr(ticket, dummy_plan, branch_name)
         return f"PR created: {pr.pr_url}"

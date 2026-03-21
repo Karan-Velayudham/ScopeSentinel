@@ -130,7 +130,7 @@ services:
     image: temporalio/auto-setup:latest
     container_name: scopesentinel-temporal
     environment:
-      - DB=postgresql
+      - DB=postgres12
       - DB_PORT=5432
       - POSTGRES_USER=${DB_USER:-sentinel}
       - POSTGRES_PWD=${DB_PASSWORD:-sentinel_dev}
@@ -175,7 +175,7 @@ services:
       target: runtime
     image: scopesentinel-agent-runtime:latest
     container_name: scopesentinel-temporal-worker
-    command: [ "python", "temporal_worker.py" ]
+    command: [ "temporal_worker.py" ]
     env_file:
       - .env
     environment:
@@ -185,6 +185,7 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TEMPORAL_ADDRESS: "temporal:7233"
+      GITHUB_REPO_LOCAL_PATH: "/app/workspace"
       MINIO_URL: "http://minio:9000"
       MINIO_ACCESS_KEY: "admin"
       MINIO_SECRET_KEY: "adminpassword"

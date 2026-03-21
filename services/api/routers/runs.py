@@ -143,10 +143,9 @@ async def trigger_run(
 
         await temporal_client.start_workflow(
             "AgentWorkflow",
-            run.ticket_id,
+            args=[run.ticket_id, body.model or "gpt-4o"],
             id=f"agent-workflow-{run.id}",
             task_queue="agent-task-queue",
-            args=[run.ticket_id, body.model or "gpt-4o"]
         )
     except Exception as e:
         log.error("api.temporal_dispatch_failed", error=str(e))

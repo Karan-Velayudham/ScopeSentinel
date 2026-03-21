@@ -1,19 +1,19 @@
 import os
 import asyncio
 from typing import Dict, Any, List
-from temporalio import activity
+from temporalio import activity, workflow
+from temporalio.exceptions import ApplicationError
 
-with activity.unsafe.imports_passed_through():
-    import agentscope
-    from agentscope.model import OpenAIChatModel
-    from mcp_pool import load_client_pool
-    from agents.planner_agent import PlannerAgent, PlannerOutput
-    from agents.coder_agent import CoderAgent, CoderOutput
-    from agents.analyzer_agent import AnalyzerAgent, AnalyzerOutput
-    from exceptions import ConfigurationError
-    from io_capture import save_step_io_sync
-    from db_sync import sync_run_progress
-    from tools.mcp_server import index_repository
+import agentscope
+from agentscope.model import OpenAIChatModel
+from mcp_pool import load_client_pool
+from agents.planner_agent import PlannerAgent, PlannerOutput
+from agents.coder_agent import CoderAgent, CoderOutput
+from agents.analyzer_agent import AnalyzerAgent, AnalyzerOutput
+from exceptions import ConfigurationError
+from io_capture import save_step_io_sync
+from db_sync import sync_run_progress
+from tools.mcp_server import index_repository
 
 @activity.defn
 async def index_repo_activity(directory: str, repo_id: str) -> str:
