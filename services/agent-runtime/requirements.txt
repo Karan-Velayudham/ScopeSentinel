@@ -1,0 +1,14 @@
+agentscope
+jira
+PyGithub
+docker
+fastapi
+uvicorn
+python-dotenv
+structlog
+pyyaml
+pytest
+pytest-mock
+pytest-asyncio
+pytest-cov
+respx

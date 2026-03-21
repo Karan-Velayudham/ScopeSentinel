@@ -1,0 +1,72 @@
+# =============================================================================
+# ScopeSentinel — local dev docker-compose (Story 0.3.2)
+#
+# Phase 0: only agent-runtime is active by default.
+# Phase 1: run `docker compose --profile phase1 up` to start postgres + redis.
+# =============================================================================
+
+version: "3.9"
+
+services:
+
+  # ── Agent Runtime ────────────────────────────────────────────────────────────
+  agent-runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: scopesentinel-agent-runtime:latest
+    container_name: scopesentinel-agent-runtime
+    env_file:
+      - .env
+    environment:
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # Mount workspace for generated code output
+      - ./workspace:/app/workspace
+      # Allow access to Docker socket for sandbox runner
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: [ "--ticket", "${TICKET:-SCRUM-8}" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+
+  # ── PostgreSQL (Phase 1, disabled in Phase 0) ────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: scopesentinel-postgres
+    profiles: [ phase1 ]
+    environment:
+      POSTGRES_DB: scopesentinel
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U sentinel -d scopesentinel" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis / Valkey (Phase 1, disabled in Phase 0) ────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: scopesentinel-redis
+    profiles: [ phase1 ]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
