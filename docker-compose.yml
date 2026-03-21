@@ -122,15 +122,57 @@ services:
       redis:
         condition: service_healthy
 
-  # ── Celery Worker (Agent Runtime) ────────────────────────────────────────────
-  celery-worker:
+  # ── Temporal Server ──────────────────────────────────────────────────────────
+  temporal:
+    image: temporalio/auto-setup:latest
+    container_name: scopesentinel-temporal
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=${DB_USER:-sentinel}
+      - POSTGRES_PWD=${DB_PASSWORD:-sentinel_dev}
+      - POSTGRES_SEEDS=postgres
+    ports:
+      - "7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Temporal UI ──────────────────────────────────────────────────────────────
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: scopesentinel-temporal-ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8088:8080"
+    depends_on:
+      - temporal
+
+  # ── MinIO (S3 compatible storage) ────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: scopesentinel-minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=adminpassword
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # ── Temporal Worker (Agent Runtime) ──────────────────────────────────────────
+  temporal-worker:
     build:
       context: ./services/agent-runtime
       dockerfile: Dockerfile
       target: runtime
     image: scopesentinel-agent-runtime:latest
-    container_name: scopesentinel-celery-worker
-    command: [ "celery", "-A", "worker.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=2" ]
+    container_name: scopesentinel-temporal-worker
+    command: [ "python", "temporal_worker.py" ]
     env_file:
       - .env
     environment:
@@ -139,14 +181,16 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      TEMPORAL_ADDRESS: "temporal:7233"
+      MINIO_URL: "http://minio:9000"
+      MINIO_ACCESS_KEY: "admin"
+      MINIO_SECRET_KEY: "adminpassword"
     volumes:
       - ./workspace:/app/workspace
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      temporal:
+        condition: service_started
 
   # ── Agent Runtime (CLI mode — kept for backward compat) ──────────────────────
   agent-runtime:
@@ -218,3 +262,4 @@ services:
 volumes:
   postgres_data:
   redpanda_data:
+  minio_data:

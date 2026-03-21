@@ -9,9 +9,10 @@ structlog
 pyyaml
 pydantic>=2.0.0
 
-# Async execution (Phase 1)
-celery[redis]>=5.4.0
+# Async execution (Phase 3 Temporal)
+temporalio>=1.6.0
 redis>=5.0.0
+minio>=7.2.4
 asyncpg>=0.30.0
 sqlmodel>=0.0.21
 alembic>=1.13.0

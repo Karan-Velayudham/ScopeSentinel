@@ -36,7 +36,7 @@ from schemas import (
     StepResponse,
     TriggerRunRequest,
 )
-from worker.celery_app import run_workflow_task
+from temporalio.client import Client
 
 logger = structlog.get_logger(__name__)
 
@@ -82,12 +82,20 @@ async def trigger_run(
     await session.commit()
     await session.refresh(run)
 
-    # Dispatch to Celery worker (non-blocking)
-    run_workflow_task.delay(
-        run_id=run.id,
-        ticket_id=run.ticket_id,
-        dry_run=run.dry_run,
-    )
+    # Dispatch to Temporal worker
+    try:
+        temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
+        temporal_client = await Client.connect(temporal_address)
+
+        await temporal_client.start_workflow(
+            "AgentWorkflow",
+            run.ticket_id,
+            id=f"agent-workflow-{run.id}",
+            task_queue="agent-task-queue"
+        )
+    except Exception as e:
+        log.error("api.temporal_dispatch_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to start workflow")
 
     log.info("api.run_dispatched", run_id=run.id)
     return _run_to_response(run)
@@ -251,13 +259,19 @@ async def submit_decision(
     session.add(hitl_event)
     await session.commit()
 
-    # Publish decision to the worker via Redis pub/sub
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-    r = aioredis.from_url(redis_url)
-    channel = f"hitl:{run_id}"
-    payload = json.dumps({"action": body.action, "feedback": body.feedback})
-    await r.publish(channel, payload)
-    await r.aclose()
+    # Send Signal to Temporal workflow
+    try:
+        temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
+        temporal_client = await Client.connect(temporal_address)
+        
+        handle = temporal_client.get_workflow_handle(f"agent-workflow-{run.id}")
+        await handle.signal(
+            "hitl-decision-signal",
+            {"action": body.action, "feedback": body.feedback}
+        )
+    except Exception as e:
+        logger.error("api.temporal_signal_failed", error=str(e))
+        # Might be okay if workflow already finished, but usually we'd want to handle gracefully
 
     logger.bind(run_id=run_id, user_id=current_user.id).info(
         "api.hitl_decision", action=body.action
