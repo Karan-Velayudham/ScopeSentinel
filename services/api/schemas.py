@@ -1,0 +1,122 @@
+"""
+schemas.py — Pydantic request/response models for the ScopeSentinel API (Epic 1.2)
+
+All models use strict types; datetimes are always UTC-aware.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Literal, Optional
+
+from pydantic import BaseModel, Field
+
+
+# ---------------------------------------------------------------------------
+# Shared
+# ---------------------------------------------------------------------------
+
+class PaginationMeta(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+
+
+# ---------------------------------------------------------------------------
+# Runs — Request bodies
+# ---------------------------------------------------------------------------
+
+class TriggerRunRequest(BaseModel):
+    ticket_id: str = Field(
+        description="Jira ticket ID to process (e.g. SCRUM-8)",
+        examples=["SCRUM-8"],
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="If true, run planner + HITL only; skip code generation and git push",
+    )
+
+
+class DecisionRequest(BaseModel):
+    action: Literal["approve", "reject", "modify"] = Field(
+        description="HITL decision action"
+    )
+    feedback: Optional[str] = Field(
+        default=None,
+        description="Required when action=modify; ignored for approve/reject",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Runs — Response bodies
+# ---------------------------------------------------------------------------
+
+class RunResponse(BaseModel):
+    """Compact run summary — used in list and POST response."""
+    run_id: str
+    ticket_id: str
+    status: str
+    dry_run: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class StepResponse(BaseModel):
+    step_id: str
+    step_name: str
+    status: str
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+
+
+class HitlEventResponse(BaseModel):
+    event_id: str
+    action: str
+    feedback: Optional[str] = None
+    decided_at: datetime
+
+
+class RunDetailResponse(BaseModel):
+    """Full run with steps and HITL history."""
+    run_id: str
+    ticket_id: str
+    status: str
+    dry_run: bool
+    created_at: datetime
+    updated_at: datetime
+    steps: list[StepResponse]
+    hitl_events: list[HitlEventResponse]
+
+
+class PlanResponse(BaseModel):
+    """Structured plan JSON for a run."""
+    run_id: str
+    plan: Optional[dict] = Field(
+        default=None,
+        description="Parsed plan from the PlannerAgent; null if planning not yet complete",
+    )
+
+
+class RunListResponse(BaseModel):
+    items: list[RunResponse]
+    meta: PaginationMeta
+
+
+class DecisionResponse(BaseModel):
+    status: Literal["accepted"]
+    run_id: str
+    action: str
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+class HealthResponse(BaseModel):
+    status: Literal["ok", "degraded"]
+    postgres: Literal["connected", "unreachable"]
+    redis: Literal["connected", "unreachable"]
+    version: str = "1.0.0"

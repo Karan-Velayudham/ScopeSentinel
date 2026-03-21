@@ -1,15 +1,97 @@
 # =============================================================================
-# ScopeSentinel — local dev docker-compose (Story 0.3.2)
+# ScopeSentinel — docker-compose for Phase 1 (Epic 1.1.4 + 1.3.1)
 #
-# Phase 0: only agent-runtime is active by default.
-# Phase 1: run `docker compose --profile phase1 up` to start postgres + redis.
+# Phase 1: all infrastructure active by default.
+# Usage:
+#   docker compose up -d                  # start everything
+#   docker compose --profile auth up -d   # also start Keycloak
+#   docker compose logs -f api            # tail API logs
 # =============================================================================
 
 version: "3.9"
 
 services:
 
-  # ── Agent Runtime ────────────────────────────────────────────────────────────
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: scopesentinel-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-scopesentinel}
+      POSTGRES_USER: ${DB_USER:-sentinel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sentinel_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-sentinel} -d ${DB_NAME:-scopesentinel}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis / Valkey ───────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: scopesentinel-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── FastAPI Control Plane ────────────────────────────────────────────────────
+  api:
+    build:
+      context: ../../services/api
+      dockerfile: Dockerfile
+    image: scopesentinel-api:latest
+    container_name: scopesentinel-api
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      REDIS_URL: "redis://redis:6379/0"
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Celery Worker (Agent Runtime) ────────────────────────────────────────────
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: scopesentinel-agent-runtime:latest
+    container_name: scopesentinel-celery-worker
+    command: [ "celery", "-A", "worker.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=2" ]
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      REDIS_URL: "redis://redis:6379/0"
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - ./workspace:/app/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Agent Runtime (CLI mode — kept for backward compat) ──────────────────────
   agent-runtime:
     build:
       context: .
@@ -17,56 +99,31 @@ services:
       target: runtime
     image: scopesentinel-agent-runtime:latest
     container_name: scopesentinel-agent-runtime
+    profiles: [ "cli" ]
     env_file:
       - .env
     environment:
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
-      # Mount workspace for generated code output
       - ./workspace:/app/workspace
-      # Allow access to Docker socket for sandbox runner
       - /var/run/docker.sock:/var/run/docker.sock
     command: [ "--ticket", "${TICKET:-SCRUM-8}" ]
-    depends_on:
-      postgres:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
 
-  # ── PostgreSQL (Phase 1, disabled in Phase 0) ────────────────────────────────
-  postgres:
-    image: postgres:16-alpine
-    container_name: scopesentinel-postgres
-    profiles: [ phase1 ]
+  # ── Keycloak (Phase 1 auth — optional) ──────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: scopesentinel-keycloak
+    profiles: [ "auth" ]
+    command: [ "start-dev", "--import-realm" ]
     environment:
-      POSTGRES_DB: scopesentinel
-      POSTGRES_USER: sentinel
-      POSTGRES_PASSWORD: sentinel_dev
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: dev-mem
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ../../infra/keycloak:/opt/keycloak/data/import
     ports:
-      - "5432:5432"
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U sentinel -d scopesentinel" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # ── Redis / Valkey (Phase 1, disabled in Phase 0) ────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: scopesentinel-redis
-    profiles: [ phase1 ]
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - "8080:8080"
 
 volumes:
   postgres_data:
