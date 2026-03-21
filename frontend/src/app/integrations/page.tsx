@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Database, Github, Key, Link as LinkIcon, MonitorCircle, RefreshCw, Slack } from "lucide-react"
+import { Database, Github, Key, Link as LinkIcon, Monitor, RefreshCw, Slack } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -44,7 +44,7 @@ const MOCK_INTEGRATIONS = [
         id: "openai",
         name: "OpenAI API",
         description: "Connect to OpenAI models directly using an API key.",
-        icon: MonitorCircle,
+        icon: Monitor,
         type: "apikey",
         status: "disconnected",
         lastSync: null,
@@ -133,7 +133,7 @@ export default function IntegrationsPage() {
                                         </Button>
                                     ) : (
                                         <Dialog open={activeApiKeyDialog === integration.id} onOpenChange={(open) => setActiveApiKeyDialog(open ? integration.id : null)}>
-                                            <DialogTrigger asChild>
+                                            <DialogTrigger>
                                                 <Button className="w-full">Provide API Key</Button>
                                             </DialogTrigger>
                                             <DialogContent>
