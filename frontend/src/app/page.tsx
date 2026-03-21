@@ -1,7 +1,28 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Activity, Workflow, CheckCircle, Clock } from "lucide-react"
+import { apiGet } from "@/lib/api-client"
 
 export default function Home() {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiGet<any>("/api/runs/stats")
+      .then(data => {
+        setStats(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch dashboard stats", err);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) return <div className="p-8 text-muted-foreground italic">Loading dashboard...</div>
+
   return (
     <div className="flex flex-1 flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -15,8 +36,8 @@ export default function Home() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">+2 since last hour</p>
+            <div className="text-2xl font-bold">{stats?.active_runs ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Currently executing</p>
           </CardContent>
         </Card>
 
@@ -26,8 +47,8 @@ export default function Home() {
             <Workflow className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">342</div>
-            <p className="text-xs text-muted-foreground">+18% from last month</p>
+            <div className="text-2xl font-bold">{stats?.workflows_executed ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Total history</p>
           </CardContent>
         </Card>
 
@@ -37,7 +58,7 @@ export default function Home() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3</div>
+            <div className="text-2xl font-bold">{stats?.pending_hitl ?? 0}</div>
             <p className="text-xs text-muted-foreground">Needs your attention</p>
           </CardContent>
         </Card>
@@ -48,8 +69,8 @@ export default function Home() {
             <CheckCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">98.5%</div>
-            <p className="text-xs text-muted-foreground">+0.2% from last week</p>
+            <div className="text-2xl font-bold">{stats?.success_rate ?? 100}%</div>
+            <p className="text-xs text-muted-foreground">Completed runs</p>
           </CardContent>
         </Card>
       </div>
@@ -60,8 +81,8 @@ export default function Home() {
             <CardTitle>Recent Activity</CardTitle>
             <CardDescription>Overview of recent workflow executions.</CardDescription>
           </CardHeader>
-          <CardContent className="h-[300px] flex items-center justify-center border-t text-muted-foreground text-sm">
-            Activity Chart Here (Placeholder)
+          <CardContent className="h-[300px] flex items-center justify-center border-t text-muted-foreground text-sm italic">
+            Activity Chart (Future Integration)
           </CardContent>
         </Card>
         <Card className="col-span-3">
@@ -69,8 +90,8 @@ export default function Home() {
             <CardTitle>Needs Approval</CardTitle>
             <CardDescription>HITL events waiting for review.</CardDescription>
           </CardHeader>
-          <CardContent className="h-[300px] flex items-center justify-center border-t text-muted-foreground text-sm">
-            Pending Tasks Output
+          <CardContent className="h-[300px] flex items-center justify-center border-t text-muted-foreground text-sm italic">
+            Pending Tasks (Future Integration)
           </CardContent>
         </Card>
       </div>

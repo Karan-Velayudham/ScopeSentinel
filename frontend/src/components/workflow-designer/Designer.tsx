@@ -22,6 +22,7 @@ import { AgentNode } from './nodes/AgentNode';
 import { HitlNode } from './nodes/HitlNode';
 import { ToolNode } from './nodes/ToolNode';
 import { ConditionNode } from './nodes/ConditionNode';
+import { apiFetch } from "@/lib/api-client";
 
 const nodeTypes = {
     triggerNode: TriggerNode,
@@ -109,9 +110,8 @@ export function DesignerComponent({
         if (!testTicketId.trim()) return;
         setTestRunOpen(false);
         try {
-            const res = await fetch(`http://localhost:8000/api/runs`, {
+            const res = await apiFetch(`/api/runs`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'dev-key-1' },
                 body: JSON.stringify({ ticket_id: testTicketId.trim(), dry_run: false })
             });
             if (res.ok) {

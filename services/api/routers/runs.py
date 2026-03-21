@@ -35,7 +35,9 @@ from schemas import (
     RunResponse,
     StepResponse,
     TriggerRunRequest,
+    DashboardStatsResponse,
 )
+from sqlalchemy import func
 from temporalio.client import Client
 
 logger = structlog.get_logger(__name__)
@@ -55,6 +57,58 @@ def _run_to_response(run: WorkflowRun) -> RunResponse:
         dry_run=run.dry_run,
         created_at=run.created_at,
         updated_at=run.updated_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/runs/stats — dashboard metrics
+# ---------------------------------------------------------------------------
+@router.get("/stats", response_model=DashboardStatsResponse)
+async def get_dashboard_stats(
+    session: SessionDep,
+    current_user: CurrentUserDep,
+):
+    """Fetch real metrics for the dashboard."""
+    # Active Runs (RUNNING or WAITING_HITL)
+    stmt_active = select(func.count(WorkflowRun.id)).where(
+        WorkflowRun.org_id == current_user.org_id,
+        WorkflowRun.status.in_([RunStatus.RUNNING, RunStatus.WAITING_HITL])
+    )
+    active_count = (await session.exec(stmt_active)).one()
+
+    # Total Executed
+    stmt_total = select(func.count(WorkflowRun.id)).where(
+        WorkflowRun.org_id == current_user.org_id
+    )
+    total_count = (await session.exec(stmt_total)).one()
+
+    # Pending HITL
+    stmt_hitl = select(func.count(WorkflowRun.id)).where(
+        WorkflowRun.org_id == current_user.org_id,
+        WorkflowRun.status == RunStatus.WAITING_HITL
+    )
+    hitl_count = (await session.exec(stmt_hitl)).one()
+
+    # Success Rate
+    stmt_success = select(func.count(WorkflowRun.id)).where(
+        WorkflowRun.org_id == current_user.org_id,
+        WorkflowRun.status == RunStatus.SUCCEEDED
+    )
+    success_count = (await session.exec(stmt_success)).one()
+
+    stmt_finished = select(func.count(WorkflowRun.id)).where(
+        WorkflowRun.org_id == current_user.org_id,
+        WorkflowRun.status.in_([RunStatus.SUCCEEDED, RunStatus.FAILED])
+    )
+    finished_count = (await session.exec(stmt_finished)).one()
+
+    success_rate = (success_count / finished_count * 100) if finished_count > 0 else 100.0
+
+    return DashboardStatsResponse(
+        active_runs=active_count,
+        workflows_executed=total_count,
+        pending_hitl=hitl_count,
+        success_rate=round(success_rate, 1)
     )
 
 
@@ -149,6 +203,8 @@ async def list_runs(
             has_next=(offset + page_size) < total,
         ),
     )
+
+
 
 
 # ---------------------------------------------------------------------------

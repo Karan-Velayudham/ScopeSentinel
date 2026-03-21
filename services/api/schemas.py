@@ -183,3 +183,8 @@ class InstalledConnectorResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+class DashboardStatsResponse(BaseModel):
+    active_runs: int
+    workflows_executed: int
+    pending_hitl: int
+    success_rate: float

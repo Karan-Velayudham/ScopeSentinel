@@ -113,7 +113,14 @@ export default function IntegrationsPage() {
                             <CardFooter className="pt-4 border-t flex gap-2">
                                 {isConnected ? (
                                     <>
-                                        <Button variant="outline" className="flex-1" size="sm">Configure</Button>
+                                        <Button
+                                            variant="outline"
+                                            className="flex-1"
+                                            size="sm"
+                                            onClick={() => alert(`Configuration for ${connector.name} is coming soon.`)}
+                                        >
+                                            Configure
+                                        </Button>
                                         {/* m-3 fix: Wire Remove/Disconnect button */}
                                         <Button
                                             variant="destructive"

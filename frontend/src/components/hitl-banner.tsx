@@ -1,13 +1,29 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { AlertCircle, ArrowRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { apiGet } from "@/lib/api-client"
 
 export function HitlBanner() {
-    // In a real app, this would poll or use a WebSocket to check for pending HITL tasks.
-    const hasPendingApproval = true
-    const pendingRunId = "run-126"
+    const [pendingRunId, setPendingRunId] = useState<string | null>(null);
 
-    if (!hasPendingApproval) return null
+    useEffect(() => {
+        // Fetch runs with status=WAITING_HITL
+        apiGet<any>("/api/runs?status=WAITING_HITL&page_size=1")
+            .then(data => {
+                if (data.items && data.items.length > 0) {
+                    setPendingRunId(data.items[0].run_id);
+                } else {
+                    setPendingRunId(null);
+                }
+            })
+            .catch(err => {
+                console.error("Failed to fetch pending HITL runs", err);
+            });
+    }, []);
+
+    if (!pendingRunId) return null
 
     return (
         <div className="px-4 py-2 border-b bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-900 dark:text-yellow-200">
