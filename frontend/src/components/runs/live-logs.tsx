@@ -14,7 +14,7 @@ const MOCK_LOGS = [
     "[2026-03-21T10:03:52Z] INFO (agent-coder): Executing file edits...",
 ]
 
-export function LiveLogs({ runId }: { runId: string }) {
+export function LiveLogs({ runId: _runId }: { runId: string }) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [logs, setLogs] = useState<string[]>([]);
 

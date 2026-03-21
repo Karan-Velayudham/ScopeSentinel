@@ -15,7 +15,7 @@ We plan to update the authentication module.
 2. Remove legacy JWT manual validation.
 `
 
-export function PlanReviewPanel({ runId }: { runId: string }) {
+export function PlanReviewPanel({ runId: _runId }: { runId: string }) {
     const [isModifying, setIsModifying] = useState(false)
     const [feedback, setFeedback] = useState("")
     const [status, setStatus] = useState<"pending" | "approved" | "rejected" | "modifying">("pending")

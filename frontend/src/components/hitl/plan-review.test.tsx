@@ -2,7 +2,11 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { PlanReviewPanel } from './plan-review'
 import '@testing-library/jest-dom'
 
-jest.mock('react-markdown', () => (props: any) => <div data-testid="markdown">{props.children}</div>)
+jest.mock('react-markdown', () => {
+    const MockReactMarkdown = (props: { children: React.ReactNode }) => <div data-testid="markdown">{props.children}</div>;
+    MockReactMarkdown.displayName = 'ReactMarkdown';
+    return MockReactMarkdown;
+});
 jest.mock('remark-gfm', () => () => { })
 
 describe('PlanReviewPanel', () => {

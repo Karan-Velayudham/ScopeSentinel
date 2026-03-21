@@ -1,16 +1,16 @@
 "use client"
 
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { useTheme } from 'next-themes'
-import { useEffect, useState } from 'react'
+import { useTheme } from "next-themes"
+import dynamic from 'next/dynamic'
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism"
+
+const SyntaxHighlighter = dynamic(
+    () => import('react-syntax-highlighter').then((mod) => mod.Prism),
+    { ssr: false }
+)
 
 export function DiffViewer({ code, language = "typescript" }: { code: string, language?: string }) {
     const { resolvedTheme } = useTheme()
-    const [mounted, setMounted] = useState(false)
-
-    useEffect(() => setMounted(true), [])
-    if (!mounted) return null
 
     return (
         <div className="rounded-md border overflow-hidden text-sm">
