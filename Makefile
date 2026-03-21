@@ -71,7 +71,7 @@ install-api:
 
 # ── Dev: install + healthcheck ────────────────────────────────────────────────
 dev: install
-	cd $(AGENT_DIR) && $(abspath $(PYTHON)) main.py
+	cd $(AGENT_DIR) && "$(abspath $(PYTHON))" main.py
 
 # ── Phase 1: start all services via Docker Compose ────────────────────────────
 api:
@@ -88,25 +88,25 @@ api-stop:
 
 # ── Local FastAPI dev server (no Docker) ─────────────────────────────────────
 api-local: install-api
-	cd $(API_DIR) && $(abspath $(API_PYTHON)) -m uvicorn main:app --reload --port 8000
+	cd $(API_DIR) && "$(abspath $(API_PYTHON))" -m uvicorn main:app --reload --port 8000
 
 # ── Run Alembic migrations ────────────────────────────────────────────────────
 migrate: install-api
-	cd $(API_DIR) && $(abspath $(API_PYTHON)) -m alembic upgrade head
+	cd $(API_DIR) && "$(abspath $(API_PYTHON))" -m alembic upgrade head
 
 # ── Seed the database ─────────────────────────────────────────────────────────
 seed: install-api
-	cd $(API_DIR) && $(abspath $(API_PYTHON)) -c \
+	cd $(API_DIR) && "$(abspath $(API_PYTHON))" -c \
 		"import asyncio; from db.seed import run_seed; from db.session import get_session; \
 		 asyncio.run(run_seed(next(get_session())))"
 
 # ── Agent runtime tests (with coverage gate) ─────────────────────────────────
 test: install
-	cd $(AGENT_DIR) && $(abspath $(PYTEST)) tests/ -v
+	cd $(AGENT_DIR) && "$(abspath $(PYTEST))" tests/ -v
 
 # ── API service tests ─────────────────────────────────────────────────────────
 test-api: install-api
-	cd $(API_DIR) && $(abspath $(API_PYTEST)) tests/ -v
+	cd $(API_DIR) && "$(abspath $(API_PYTEST))" tests/ -v
 
 # ── Build all Docker images ───────────────────────────────────────────────────
 build:
@@ -115,7 +115,7 @@ build:
 
 # ── Run CLI via Python ────────────────────────────────────────────────────────
 run: install
-	cd $(AGENT_DIR) && $(abspath $(PYTHON)) main.py --ticket $(TICKET)
+	cd $(AGENT_DIR) && "$(abspath $(PYTHON))" main.py --ticket $(TICKET)
 
 # ── Run CLI via Docker ────────────────────────────────────────────────────────
 run-docker: build

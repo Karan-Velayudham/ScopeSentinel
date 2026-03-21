@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import DateTime
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -74,7 +75,7 @@ class Org(SQLModel, table=True):
     id: str = Field(default_factory=_new_uuid, primary_key=True)
     name: str = Field(index=True, unique=True)
     slug: str = Field(index=True, unique=True)
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 
     # Relationships
     users: list["User"] = Relationship(back_populates="org")
@@ -93,8 +94,8 @@ class Workflow(SQLModel, table=True):
     org_id: str = Field(foreign_key="orgs.id", index=True)
     name: str = Field(index=True)
     description: Optional[str] = Field(default=None)
-    created_at: datetime = Field(default_factory=_utcnow)
-    updated_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 
     # Relationships
     runs: list["WorkflowRun"] = Relationship(back_populates="workflow")
@@ -114,7 +115,7 @@ class User(SQLModel, table=True):
     role: UserRole = Field(default=UserRole.DEVELOPER)
     # SHA-256 hex of the raw API key. NULL means JWT-only user.
     hashed_api_key: Optional[str] = Field(default=None, index=True)
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 
     # Relationships
     org: Optional[Org] = Relationship(back_populates="users")
@@ -141,8 +142,8 @@ class WorkflowRun(SQLModel, table=True):
     # JSON-encoded PlannerOutput (set after planning step completes)
     plan_json: Optional[str] = Field(default=None)
     error_message: Optional[str] = Field(default=None)
-    created_at: datetime = Field(default_factory=_utcnow)
-    updated_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 
     # Relationships
     org: Optional[Org] = Relationship(back_populates="runs")
@@ -166,8 +167,8 @@ class RunStep(SQLModel, table=True):
     input_json: Optional[str] = Field(default=None)
     output_json: Optional[str] = Field(default=None)
     error_message: Optional[str] = Field(default=None)
-    started_at: Optional[datetime] = Field(default=None)
-    finished_at: Optional[datetime] = Field(default=None)
+    started_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
+    finished_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
 
     # Relationship
     run: Optional[WorkflowRun] = Relationship(back_populates="steps")
@@ -186,7 +187,7 @@ class HitlEvent(SQLModel, table=True):
     feedback: Optional[str] = Field(default=None)
     # Who made the decision (NULL = anonymous / pre-auth)
     decided_by_id: Optional[str] = Field(default=None, foreign_key="users.id")
-    decided_at: datetime = Field(default_factory=_utcnow)
+    decided_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 
     # Relationships
     run: Optional[WorkflowRun] = Relationship(back_populates="hitl_events")

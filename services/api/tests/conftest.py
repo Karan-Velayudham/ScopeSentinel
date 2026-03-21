@@ -2,6 +2,10 @@
 tests/conftest.py — Shared fixtures for the ScopeSentinel API tests
 """
 
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient

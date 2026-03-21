@@ -18,6 +18,7 @@ from typing import Annotated, Optional
 import redis.asyncio as aioredis
 import structlog
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 from auth.api_keys import CurrentUserDep
@@ -316,6 +317,9 @@ async def _get_run_or_404(
         select(WorkflowRun).where(
             WorkflowRun.id == run_id,
             WorkflowRun.org_id == org_id,
+        ).options(
+            selectinload(WorkflowRun.steps),
+            selectinload(WorkflowRun.hitl_events),
         )
     )
     run = result.first()
