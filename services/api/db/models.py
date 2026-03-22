@@ -97,6 +97,7 @@ class Workflow(SQLModel, table=True):
     name: str = Field(index=True)
     description: Optional[str] = Field(default=None)
     version: int = Field(default=1)
+    status: str = Field(default="draft", index=True)  # draft | active | paused | archived
     yaml_content: str = Field(default="")
     created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
     updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))

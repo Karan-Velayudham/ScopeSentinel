@@ -170,9 +170,14 @@ class WorkflowResponse(BaseModel):
     name: str
     description: Optional[str]
     version: int
+    status: str = "draft"  # draft | active | paused | archived
     yaml_content: str
     created_at: datetime
     updated_at: datetime
+
+class WorkflowActivateResponse(BaseModel):
+    id: str
+    status: str
 
 class WorkflowListResponse(BaseModel):
     items: list[WorkflowResponse]
@@ -188,6 +193,17 @@ class ConnectorInfo(BaseModel):
     description: str
     category: str
     icon_url: str
+    auth_type: str = "none"  # "oauth" | "api_key" | "none"
+
+class ConnectorTool(BaseModel):
+    name: str
+    description: str
+    inputs: list[dict[str, Any]] = Field(default_factory=list)
+
+class ConnectorInfoExtended(ConnectorInfo):
+    tools: list[ConnectorTool] = Field(default_factory=list)
+    oauth_scopes: list[str] = Field(default_factory=list)
+    api_key_fields: list[dict[str, Any]] = Field(default_factory=list)
 
 class ConnectorInstallRequest(BaseModel):
     config: dict[str, Any]
@@ -198,6 +214,22 @@ class InstalledConnectorResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+class InstalledConnectorDetailResponse(BaseModel):
+    id: str
+    connector_id: str
+    connector_name: str
+    icon_url: str
+    auth_type: str
+    is_active: bool
+    tools: list[ConnectorTool] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+class OAuthInitResponse(BaseModel):
+    authorization_url: str
+    state: str
+    connector_id: str
 class DashboardStatsResponse(BaseModel):
     active_runs: int
     workflows_executed: int

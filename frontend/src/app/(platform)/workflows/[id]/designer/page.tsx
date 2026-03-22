@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { Designer } from '@/components/workflow-designer/Designer';
 import { workflowGraphToYaml, yamlToWorkflowGraph } from '@/lib/workflow-parser';
 import { Node, Edge } from '@xyflow/react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { apiFetch } from '@/lib/api-client';
 
 export default function WorkflowDesignerPage() {
     const params = useParams();
@@ -16,11 +17,11 @@ export default function WorkflowDesignerPage() {
     const [loading, setLoading] = useState(true);
     const [initialNodes, setInitialNodes] = useState<Node[]>([]);
     const [initialEdges, setInitialEdges] = useState<Edge[]>([]);
-    const [workflowName, setWorkflowName] = useState('Untitled Workflow');
+    const [workflowName, setWorkflowName] = useState('New Workflow');
     const [workflowDesc, setWorkflowDesc] = useState('');
+    const [workflowStatus, setWorkflowStatus] = useState('draft');
 
     useEffect(() => {
-        // If id is "new", we can start with a blank canvas
         if (id === 'new') {
             const { nodes, edges } = yamlToWorkflowGraph('');
             setInitialNodes(nodes);
@@ -29,17 +30,18 @@ export default function WorkflowDesignerPage() {
             return;
         }
 
-        fetch(`http://localhost:8000/api/workflows/${id}`)
+        apiFetch(`/api/workflows/${id}`)
             .then(res => {
                 if (!res.ok) throw new Error("Failed to fetch workflow");
                 return res.json();
             })
             .then(data => {
-                const { nodes, edges, name, description } = yamlToWorkflowGraph(data.yaml_content || '');
+                const { nodes, edges } = yamlToWorkflowGraph(data.yaml_content || '');
                 setInitialNodes(nodes);
                 setInitialEdges(edges);
-                setWorkflowName(data.name || name);
-                setWorkflowDesc(data.description || description);
+                setWorkflowName(data.name || 'Workflow');
+                setWorkflowDesc(data.description || '');
+                setWorkflowStatus(data.status || 'draft');
                 setLoading(false);
             })
             .catch(err => {
@@ -48,33 +50,30 @@ export default function WorkflowDesignerPage() {
             });
     }, [id]);
 
-    const handleSave = async (nodes: Node[], edges: Edge[]) => {
-        const yamlContent = workflowGraphToYaml(workflowName, workflowDesc, nodes, edges);
+    const handleSave = async (nodes: Node[], edges: Edge[], name: string) => {
+        const yamlContent = workflowGraphToYaml(name, workflowDesc, nodes, edges);
         const method = id === 'new' ? 'POST' : 'PUT';
-        const url = id === 'new'
-            ? `http://localhost:8000/api/workflows/`
-            : `http://localhost:8000/api/workflows/${id}`;
+        const url = id === 'new' ? `/api/workflows/` : `/api/workflows/${id}`;
 
         const payload = id === 'new'
-            ? { name: workflowName, description: workflowDesc, yaml_content: yamlContent }
-            : { yaml_content: yamlContent };
+            ? { name, description: workflowDesc, yaml_content: yamlContent }
+            : { yaml_content: yamlContent, name };
 
         try {
-            const res = await fetch(url, {
+            const res = await apiFetch(url, {
                 method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
+
             if (res.ok) {
                 if (id === 'new') {
                     const data = await res.json();
                     router.push(`/workflows/${data.id}/designer`);
-                } else {
-                    alert("Workflow saved successfully!");
                 }
+                // If update — the top bar already shows "Saved" feedback
             } else {
                 const error = await res.json();
-                alert(`Failed to save workflow: ${error.detail}`);
+                alert(`Failed to save: ${error.detail}`);
             }
         } catch (e) {
             console.error(e);
@@ -82,32 +81,29 @@ export default function WorkflowDesignerPage() {
         }
     };
 
-    if (loading) return <div className="p-8 flex items-center justify-center">Loading designer...</div>;
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-[calc(100vh-120px)]">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+        );
+    }
 
     return (
-        <div className="flex flex-col gap-4 h-[calc(100vh-100px)]">
-            <div className="flex items-center gap-4 border-b pb-4">
-                <Link href="/workflows" className="text-muted-foreground hover:text-foreground">
-                    <ArrowLeft className="h-5 w-5" />
+        <div className="flex flex-col gap-0 h-full">
+            {/* Back nav */}
+            <div className="flex items-center gap-2 pb-3">
+                <Link href="/workflows" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    <ArrowLeft className="h-4 w-4" /> Workflows
                 </Link>
-                <div className="flex flex-col flex-1">
-                    <input
-                        className="text-2xl font-bold bg-transparent border-none outline-none placeholder-muted-foreground"
-                        value={workflowName}
-                        onChange={(e) => setWorkflowName(e.target.value)}
-                        placeholder="Workflow Name"
-                    />
-                    <input
-                        className="text-sm text-muted-foreground bg-transparent border-none outline-none w-full placeholder-muted-foreground/50"
-                        value={workflowDesc}
-                        onChange={(e) => setWorkflowDesc(e.target.value)}
-                        placeholder="Enter workflow description..."
-                    />
-                </div>
             </div>
+
             <Designer
+                workflowId={id === 'new' ? undefined : id}
+                initialName={workflowName}
                 initialNodes={initialNodes}
                 initialEdges={initialEdges}
+                initialStatus={workflowStatus}
                 onSave={handleSave}
             />
         </div>

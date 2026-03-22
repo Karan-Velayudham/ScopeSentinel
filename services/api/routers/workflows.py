@@ -13,6 +13,7 @@ from schemas import (
     WorkflowUpdateRequest,
     WorkflowResponse,
     WorkflowListResponse,
+    WorkflowActivateResponse,
     WorkflowDSL,
 )
 
@@ -45,6 +46,7 @@ def _workflow_to_response(wf: Workflow) -> WorkflowResponse:
         name=wf.name,
         description=wf.description,
         version=wf.version,
+        status=getattr(wf, 'status', 'draft'),
         yaml_content=wf.yaml_content,
         created_at=wf.created_at,
         updated_at=wf.updated_at,
@@ -267,3 +269,41 @@ async def export_workflow(
         media_type="application/x-yaml",
         headers={"Content-Disposition": f"attachment; filename={wf.name.replace(' ', '_')}.yaml"}
     )
+
+
+@router.post("/{workflow_id}/activate", response_model=WorkflowActivateResponse)
+async def activate_workflow(
+    workflow_id: str,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> WorkflowActivateResponse:
+    """Activate a workflow to make it a trigger listener."""
+    wf = (await session.exec(
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id)
+    )).first()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    wf.status = "active"
+    session.add(wf)
+    await session.commit()
+    logger.info("workflow.activated", workflow_id=workflow_id)
+    return WorkflowActivateResponse(id=wf.id, status="active")
+
+
+@router.post("/{workflow_id}/deactivate", response_model=WorkflowActivateResponse)
+async def deactivate_workflow(
+    workflow_id: str,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> WorkflowActivateResponse:
+    """Pause an active workflow."""
+    wf = (await session.exec(
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id)
+    )).first()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    wf.status = "paused"
+    session.add(wf)
+    await session.commit()
+    logger.info("workflow.deactivated", workflow_id=workflow_id)
+    return WorkflowActivateResponse(id=wf.id, status="paused")

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
     ReactFlow,
     ReactFlowProvider,
@@ -9,11 +9,14 @@ import {
     useEdgesState,
     Controls,
     Background,
+    BackgroundVariant,
     Connection,
     Edge,
     Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+
+import { Share2, Save, Play, ChevronDown, Zap, LayoutGrid, Check } from 'lucide-react';
 
 import { Sidebar } from './Sidebar';
 import { ConfigPanel } from './ConfigPanel';
@@ -22,7 +25,12 @@ import { AgentNode } from './nodes/AgentNode';
 import { HitlNode } from './nodes/HitlNode';
 import { ToolNode } from './nodes/ToolNode';
 import { ConditionNode } from './nodes/ConditionNode';
+import { InputNode } from './nodes/InputNode';
+import { OutputNode } from './nodes/OutputNode';
+import { OAuthConnectModal } from './OAuthConnectModal';
 import { apiFetch } from "@/lib/api-client";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 const nodeTypes = {
     triggerNode: TriggerNode,
@@ -30,28 +38,45 @@ const nodeTypes = {
     hitlNode: HitlNode,
     toolNode: ToolNode,
     conditionNode: ConditionNode,
+    inputNode: InputNode,
+    outputNode: OutputNode,
 };
 
-let id = 0;
-const getId = () => `node_${id++}`;
+let nodeCount = 0;
+const getId = () => `node_${++nodeCount}`;
+
+// ─── DesignerComponent ────────────────────────────────────────────────────────
 
 export function DesignerComponent({
+    workflowId,
+    initialName = 'New Workflow',
     initialNodes = [],
     initialEdges = [],
-    onSave
+    initialStatus = 'draft',
+    onSave,
 }: {
-    initialNodes?: Node[],
-    initialEdges?: Edge[],
-    onSave: (nodes: Node[], edges: Edge[]) => void
+    workflowId?: string;
+    initialName?: string;
+    initialNodes?: Node[];
+    initialEdges?: Edge[];
+    initialStatus?: string;
+    onSave: (nodes: Node[], edges: Edge[], name: string) => void;
 }) {
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [workflowName, setWorkflowName] = useState(initialName);
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [status, setStatus] = useState(initialStatus);
+    const [saveDropdownOpen, setSaveDropdownOpen] = useState(false);
+    const [connectModal, setConnectModal] = useState<{ connector: any } | null>(null);
+    const [activating, setActivating] = useState(false);
+    const [saved, setSaved] = useState(false);
 
     const onConnect = useCallback(
-        (params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)),
+        (params: Connection | Edge) => setEdges(eds => addEdge({ ...params, animated: true }, eds)),
         [setEdges]
     );
 
@@ -64,13 +89,11 @@ export function DesignerComponent({
         (event: React.DragEvent) => {
             event.preventDefault();
 
-            const type = event.dataTransfer.getData('application/reactflow');
-            const label = event.dataTransfer.getData('application/reactflow-label');
+            const type = event.dataTransfer.getData('application/reactflow/type');
+            const label = event.dataTransfer.getData('application/reactflow/label');
+            const rawData = event.dataTransfer.getData('application/reactflow/data');
 
-            if (typeof type === 'undefined' || !type) {
-                return;
-            }
-
+            if (!type) return;
             if (!reactFlowInstance) return;
 
             const position = reactFlowInstance.screenToFlowPosition({
@@ -78,112 +101,163 @@ export function DesignerComponent({
                 y: event.clientY,
             });
 
+            let extraData: Record<string, any> = {};
+            try { extraData = JSON.parse(rawData); } catch { }
+
             const newNode: Node = {
                 id: getId(),
                 type,
                 position,
-                data: { label: label || `${type} node` },
+                data: { label: label || type, ...extraData },
             };
 
-            setNodes((nds) => nds.concat(newNode));
+            setNodes(nds => nds.concat(newNode));
         },
         [reactFlowInstance, setNodes]
     );
 
-    const updateNodeData = (nodeId: string, data: any) => {
-        setNodes((nds) =>
-            nds.map((node) => {
-                if (node.id === nodeId) {
-                    node.data = { ...node.data, ...data };
-                }
-                return node;
-            })
-        );
+    const updateNodeData = useCallback((nodeId: string, data: any) => {
+        setNodes(nds => nds.map(n => n.id === nodeId ? { ...n, data } : n));
+    }, [setNodes]);
+
+    const selectedNode = nodes.find(n => n.id === selectedNodeId);
+
+    // ── Save handler ──────────────────────────────────────────────────────────
+    const handleSave = () => {
+        onSave(nodes, edges, workflowName);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
     };
 
-    const selectedNode = nodes.find((n) => n.id === selectedNodeId);
-
-    const [testRunOpen, setTestRunOpen] = useState(false);
-    const [testTicketId, setTestTicketId] = useState("");
-
-    const handleTestRun = async () => {
-        if (!testTicketId.trim()) return;
-        setTestRunOpen(false);
+    // ── Activate / Deactivate ─────────────────────────────────────────────────
+    const handleActivate = async () => {
+        if (!workflowId) return;
+        setActivating(true);
         try {
-            const res = await apiFetch(`/api/runs`, {
-                method: 'POST',
-                body: JSON.stringify({ ticket_id: testTicketId.trim(), dry_run: false })
-            });
+            const action = status === 'active' ? 'deactivate' : 'activate';
+            const res = await apiFetch(`/api/workflows/${workflowId}/${action}`, { method: 'POST' });
             if (res.ok) {
                 const data = await res.json();
-                alert(`Test run initiated! Run ID: ${data.run_id}`);
-            } else {
-                alert("Test run failed. Check Temporal is running.");
+                setStatus(data.status);
             }
-        } catch (e) {
-            alert("Error initiating test run.");
         } finally {
-            setTestTicketId("");
+            setActivating(false);
         }
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-120px)] border rounded-lg overflow-hidden relative">
-            <div className="flex h-12 items-center justify-between border-b bg-muted/30 px-4">
-                <div className="font-semibold flex items-center gap-2">
-                    <span>Visual Workflow Designer</span>
-                </div>
-                <div className="flex gap-2">
-                    {/* M-2 Fix: Prompt for ticket_id via dialog instead of hardcoding */}
-                    <button
-                        className="px-3 py-1.5 text-sm border bg-card text-foreground rounded-md hover:bg-muted/50 transition-colors cursor-pointer"
-                        onClick={() => setTestRunOpen(true)}
-                    >
-                        Test Run
-                    </button>
-                    <button
-                        className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors cursor-pointer"
-                        onClick={() => onSave(nodes, edges)}
-                    >
-                        Save YAML
-                    </button>
-                </div>
-            </div>
-            {/* Test Run Dialog */}
-            {testRunOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-                    <div className="bg-card border rounded-lg shadow-xl p-6 w-96 space-y-4">
-                        <h3 className="font-semibold text-lg">Trigger Test Run</h3>
-                        <p className="text-sm text-muted-foreground">Enter a Jira ticket ID to trigger a test run of this workflow.</p>
-                        <input
-                            type="text"
-                            className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                            placeholder="e.g. SCRUM-8"
-                            value={testTicketId}
-                            onChange={e => setTestTicketId(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && handleTestRun()}
-                            autoFocus
-                        />
-                        <div className="flex gap-2 justify-end">
-                            <button
-                                className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted/50"
-                                onClick={() => { setTestRunOpen(false); setTestTicketId(""); }}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
-                                onClick={handleTestRun}
-                                disabled={!testTicketId.trim()}
-                            >
-                                Start Run
-                            </button>
-                        </div>
+        <div className="flex flex-col h-[calc(100vh-64px)] border rounded-lg overflow-hidden bg-background">
+
+            {/* ── Top Bar ───────────────────────────────────────────────────── */}
+            <div className="flex h-12 items-center gap-3 border-b bg-card px-4 shrink-0">
+                {/* Workflow name */}
+                <div className="flex items-center gap-1.5">
+                    <div className="h-6 w-6 rounded bg-primary flex items-center justify-center">
+                        <LayoutGrid className="h-3.5 w-3.5 text-primary-foreground" />
                     </div>
+                    {isEditingName ? (
+                        <input
+                            autoFocus
+                            className="text-sm font-semibold outline-none border-b border-primary bg-transparent"
+                            value={workflowName}
+                            onChange={e => setWorkflowName(e.target.value)}
+                            onBlur={() => setIsEditingName(false)}
+                            onKeyDown={e => e.key === 'Enter' && setIsEditingName(false)}
+                        />
+                    ) : (
+                        <button
+                            onClick={() => setIsEditingName(true)}
+                            className="text-sm font-semibold hover:text-primary transition-colors"
+                        >
+                            {workflowName}
+                        </button>
+                    )}
+
+                    {/* Status badge */}
+                    <span className={`text-[10px] font-mono rounded-full px-2 py-0.5 ${status === 'active'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                            : status === 'paused'
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                                : 'bg-muted text-muted-foreground'
+                        }`}>{status}</span>
                 </div>
-            )}
+
+                <div className="flex-1" />
+
+                {/* Add Trigger button */}
+                <button
+                    onClick={() => {
+                        const trigNode: Node = {
+                            id: getId(),
+                            type: 'triggerNode',
+                            position: { x: 60, y: 100 },
+                            data: { label: 'Manual Trigger', triggerType: 'manual' },
+                        };
+                        setNodes(nds => nds.concat(trigNode));
+                    }}
+                    className="flex items-center gap-1.5 text-xs border rounded-md px-3 py-1.5 hover:bg-muted/50 transition-colors"
+                >
+                    <Zap className="h-3.5 w-3.5" /> Add Trigger
+                </button>
+
+                {/* Activate / Deactivate */}
+                {workflowId && (
+                    <button
+                        disabled={activating}
+                        onClick={handleActivate}
+                        className={`flex items-center gap-1.5 text-xs rounded-md px-3 py-1.5 transition-colors font-medium ${status === 'active'
+                                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300'
+                                : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300'
+                            }`}
+                    >
+                        {activating ? '…' : status === 'active' ? 'Deactivate' : 'Activate'}
+                    </button>
+                )}
+
+                {/* Share */}
+                <button className="flex items-center gap-1.5 text-xs border rounded-md px-3 py-1.5 hover:bg-muted/50 transition-colors">
+                    <Share2 className="h-3.5 w-3.5" /> Share
+                </button>
+
+                {/* Save */}
+                <div className="relative">
+                    <div className="flex items-center border rounded-md overflow-hidden">
+                        <button
+                            onClick={handleSave}
+                            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 transition-colors font-medium ${saved
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                    : 'bg-card hover:bg-muted/50'
+                                }`}
+                        >
+                            {saved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
+                            {saved ? 'Saved' : 'Save'}
+                        </button>
+                        <button
+                            onClick={() => setSaveDropdownOpen(!saveDropdownOpen)}
+                            className="border-l px-1.5 py-1.5 hover:bg-muted/50 transition-colors"
+                        >
+                            <ChevronDown className="h-3 w-3" />
+                        </button>
+                    </div>
+                    {saveDropdownOpen && (
+                        <div className="absolute right-0 top-full mt-1 bg-card border rounded-md shadow-lg z-50 min-w-36 text-sm">
+                            <button onClick={() => { handleSave(); setSaveDropdownOpen(false); }}
+                                className="w-full text-left px-3 py-2 hover:bg-muted/50">Save</button>
+                            <button className="w-full text-left px-3 py-2 hover:bg-muted/50 text-muted-foreground text-xs">Export YAML</button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Run */}
+                <button className="flex items-center gap-1.5 text-xs bg-primary text-primary-foreground rounded-md px-3 py-1.5 hover:bg-primary/90 transition-colors font-medium">
+                    <Play className="h-3.5 w-3.5" /> Run
+                </button>
+            </div>
+
+            {/* ── Canvas Area ────────────────────────────────────────────────── */}
             <div className="flex flex-1 overflow-hidden">
-                <Sidebar />
+                <Sidebar onConnectClick={connector => setConnectModal({ connector })} />
+
                 <div className="flex-1 h-full" ref={reactFlowWrapper}>
                     <ReactFlow
                         nodes={nodes}
@@ -195,16 +269,31 @@ export function DesignerComponent({
                         onDrop={onDrop}
                         onDragOver={onDragOver}
                         onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-                        onPaneClick={() => setSelectedNodeId(null)}
+                        onPaneClick={() => { setSelectedNodeId(null); setSaveDropdownOpen(false); }}
                         nodeTypes={nodeTypes}
                         fitView
+                        defaultEdgeOptions={{ animated: true, style: { strokeWidth: 1.5 } }}
                     >
                         <Controls />
-                        <Background color="#ccc" gap={16} />
+                        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
                     </ReactFlow>
                 </div>
+
                 <ConfigPanel selectedNode={selectedNode} updateNodeData={updateNodeData} />
             </div>
+
+            {/* ── OAuth Connect Modal ────────────────────────────────────────── */}
+            {connectModal && (
+                <OAuthConnectModal
+                    connector={connectModal.connector}
+                    onClose={() => setConnectModal(null)}
+                    onConnected={() => {
+                        setConnectModal(null);
+                        // Sidebar will refetch on next render
+                        window.location.reload();
+                    }}
+                />
+            )}
         </div>
     );
 }
