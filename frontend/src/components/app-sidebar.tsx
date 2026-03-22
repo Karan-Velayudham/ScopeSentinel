@@ -9,6 +9,9 @@ import {
     Workflow,
     LogOut,
     Bot,
+    Users,
+    ShieldCheck,
+    CreditCard,
 } from "lucide-react"
 import { useSession, signIn, signOut } from "next-auth/react"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -57,6 +60,21 @@ const data = {
             title: "Settings",
             url: "/settings",
             icon: Settings2,
+        },
+        {
+            title: "Team & Roles",
+            url: "/settings/team",
+            icon: Users,
+        },
+        {
+            title: "Audit Log",
+            url: "/audit",
+            icon: ShieldCheck,
+        },
+        {
+            title: "Billing & Usage",
+            url: "/billing",
+            icon: CreditCard,
         },
     ],
 }
