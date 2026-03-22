@@ -15,9 +15,15 @@ export function InputNode({ data }: { data: any }) {
                 <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{data.label || 'Input'}</div>
                 {fields.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
-                        {fields.map((f: string) => (
-                            <span key={f} className="text-xs bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 dark:bg-slate-700 dark:text-slate-300">{f}</span>
-                        ))}
+                        {fields.map((f: any, idx: number) => {
+                            const fieldName = typeof f === 'string' ? f : f.name;
+                            if (!fieldName) return null;
+                            return (
+                                <span key={idx} className="text-xs bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 dark:bg-slate-700 dark:text-slate-300">
+                                    {fieldName}
+                                </span>
+                            );
+                        })}
                     </div>
                 )}
             </div>
