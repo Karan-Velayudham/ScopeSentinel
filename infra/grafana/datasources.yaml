@@ -1,0 +1,57 @@
+# ============================================================================
+# Grafana / Loki / Tempo / Mimir datasources config (Epic 5.5)
+# 
+# Deploy alongside Grafana for full observability stack.
+# ============================================================================
+
+apiVersion: 1
+
+datasources:
+  # ── Loki (Log Aggregation) ─────────────────────────────────────────────────
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    version: 1
+    editable: true
+
+  # ── Tempo (Distributed Tracing) ───────────────────────────────────────────
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: false
+    version: 1
+    editable: true
+    jsonData:
+      serviceMap:
+        datasourceUid: prometheus
+      search:
+        hide: false
+      tracesToLogs:
+        datasourceUid: loki
+
+  # ── Prometheus / Mimir (Metrics) ──────────────────────────────────────────
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://mimir:9090
+    isDefault: true
+    uid: prometheus
+    version: 1
+    editable: true
+
+  # ── TimescaleDB (Usage Metrics via pg datasource) ─────────────────────────
+  - name: TimescaleDB
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: scopesentinel
+    user: ${DB_USER}
+    secureJsonData:
+      password: ${DB_PASSWORD}
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: true

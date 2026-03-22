@@ -8,8 +8,16 @@ from openai import AsyncOpenAI
 
 logger = structlog.get_logger(__name__)
 
-COLLECTION_NAME = "codebase"
+# Default fallback collection for backwards compat with single-tenant runs
+_DEFAULT_COLLECTION = "codebase"
 EMBEDDING_MODEL = "text-embedding-3-small"
+
+
+def _collection_name(org_id: str | None) -> str:
+    """Return tenant-scoped collection name or the global fallback."""
+    if org_id:
+        return f"org_{org_id}_knowledge"
+    return _DEFAULT_COLLECTION
 
 def _get_qdrant_client():
     host = os.environ.get("QDRANT_HOST", "qdrant")
@@ -21,20 +29,22 @@ def _get_llm_client():
     base_url = os.environ.get("LITELLM_URL", "http://litellm:4000")
     return AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-async def init_collection():
+async def init_collection(org_id: str | None = None):
+    collection = _collection_name(org_id)
     client = _get_qdrant_client()
     collections = client.get_collections().collections
-    exists = any(c.name == COLLECTION_NAME for c in collections)
-    
+    exists = any(c.name == collection for c in collections)
+
     if not exists:
-        logger.info("ingest.creating_collection", name=COLLECTION_NAME)
+        logger.info("ingest.creating_collection", name=collection)
         client.create_collection(
-            collection_name=COLLECTION_NAME,
+            collection_name=collection,
             vectors_config=models.VectorParams(size=1536, distance=models.Distance.COSINE),
         )
 
-async def ingest_file(file_path: Path, repo_id: str):
-    """Chunk and index a single file."""
+async def ingest_file(file_path: Path, repo_id: str, org_id: str | None = None):
+    """Chunk and index a single file into the tenant's Qdrant collection."""
+    collection = _collection_name(org_id)
     client = _get_qdrant_client()
     llm = _get_llm_client()
     
@@ -69,11 +79,11 @@ async def ingest_file(file_path: Path, repo_id: str):
                 }
             ))
         
-        client.upsert(collection_name=COLLECTION_NAME, points=points)
+        client.upsert(collection_name=collection, points=points)
     except Exception as e:
         logger.error("ingest.file_failed", path=str(file_path), error=str(e))
 
-async def ingest_directory(directory: Path, repo_id: str):
+async def ingest_directory(directory: Path, repo_id: str, org_id: str | None = None):
     ignore_dirs = {".git", "__pycache__", "node_modules", "venv", ".venv", "dist", "build"}
     ignore_exts = {".pyc", ".pyo", ".pyd", ".so", ".dll", ".exe", ".bin", ".jpg", ".png", ".gif", ".pdf"}
 
@@ -86,6 +96,18 @@ async def ingest_directory(directory: Path, repo_id: str):
                 continue
             tasks.append(ingest_file(path, repo_id))
     
+    if tasks:
+        await asyncio.gather(*tasks)
+
+    tasks = []
+    for root, dirs, files in os.walk(directory):
+        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+        for file in files:
+            path = Path(root) / file
+            if path.suffix in ignore_exts:
+                continue
+            tasks.append(ingest_file(path, repo_id, org_id))
+
     if tasks:
         await asyncio.gather(*tasks)
 

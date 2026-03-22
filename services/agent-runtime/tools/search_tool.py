@@ -6,8 +6,14 @@ from openai import AsyncOpenAI
 
 logger = structlog.get_logger(__name__)
 
-COLLECTION_NAME = "codebase"
+_DEFAULT_COLLECTION = "codebase"
 EMBEDDING_MODEL = "text-embedding-3-small"
+
+
+def _collection_name(org_id: str | None) -> str:
+    if org_id:
+        return f"org_{org_id}_knowledge"
+    return _DEFAULT_COLLECTION
 
 def _get_qdrant_client():
     host = os.environ.get("QDRANT_HOST", "qdrant")
@@ -19,10 +25,12 @@ def _get_llm_client():
     base_url = os.environ.get("LITELLM_URL", "http://litellm:4000")
     return AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-async def search_codebase(query: str, repo_id: str = None, top_k: int = 5):
+async def search_codebase(query: str, repo_id: str = None, top_k: int = 5, org_id: str | None = None):
     """
     Perform semantic search over the indexed codebase.
+    Uses the tenant-specific Qdrant collection when org_id is provided.
     """
+    collection = _collection_name(org_id)
     client = _get_qdrant_client()
     llm = _get_llm_client()
     
@@ -31,9 +39,9 @@ async def search_codebase(query: str, repo_id: str = None, top_k: int = 5):
         res = await llm.embeddings.create(input=[query], model=EMBEDDING_MODEL)
         vector = res.data[0].embedding
         
-        # Search Qdrant
+        # Search Qdrant in the tenant-scoped collection
         search_result = client.search(
-            collection_name=COLLECTION_NAME,
+            collection_name=collection,
             query_vector=vector,
             query_filter=models.Filter(
                 must=[models.FieldCondition(key="repo_id", match=models.MatchValue(value=repo_id))]

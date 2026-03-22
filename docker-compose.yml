@@ -1,5 +1,5 @@
 # =============================================================================
-# ScopeSentinel — docker-compose for Phase 3
+# ScopeSentinel — docker-compose for Phase 5
 #
 # Usage:
 #   docker compose up -d                  # start everything
@@ -280,6 +280,82 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── Tenant Management Service (Phase 5) ──────────────────────────────────────
+  tenant-mgmt:
+    build:
+      context: ./services/tenant-mgmt
+      dockerfile: Dockerfile
+    image: scopesentinel-tenant-mgmt:latest
+    container_name: scopesentinel-tenant-mgmt
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      REDPANDA_BROKERS: "redpanda:9092"
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+  # ── Audit Service (Phase 5) ───────────────────────────────────────────────────
+  audit:
+    build:
+      context: ./services/audit
+      dockerfile: Dockerfile
+    image: scopesentinel-audit:latest
+    container_name: scopesentinel-audit
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      REDPANDA_BROKERS: "redpanda:9092"
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+
+  # ── Metering Service (Phase 5) ────────────────────────────────────────────────
+  metering:
+    build:
+      context: ./services/metering
+      dockerfile: Dockerfile
+    image: scopesentinel-metering:latest
+    container_name: scopesentinel-metering
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      REDPANDA_BROKERS: "redpanda:9092"
+      REDIS_URL: "redis://redis:6379/1"
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
 
 volumes:
   postgres_data:

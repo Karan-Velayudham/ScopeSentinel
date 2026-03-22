@@ -22,6 +22,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 from auth.api_keys import CurrentUserDep
+from auth.rbac import assert_can_trigger, assert_can_approve_hitl
 from db.models import HitlAction, HitlEvent, RunStatus, WorkflowRun
 from db.session import SessionDep
 from schemas import (
@@ -123,7 +124,8 @@ async def trigger_run(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> RunResponse:
-    """Trigger a new workflow run."""
+    """Trigger a new workflow run. Requires DEVELOPER role or above."""
+    assert_can_trigger(current_user)
     import json
     log = logger.bind(user_id=current_user.id)
     if body.ticket_id:
@@ -166,7 +168,29 @@ async def trigger_run(
     else:
         log.info("api.dynamic_run_recorded", run_id=run.id, note="Execution engine not yet implemented")
 
+    # Publish metering event (Epic 5.4 — fire-and-forget)
+    import asyncio
+    asyncio.create_task(_publish_metering_event(run.org_id, "run"))
+
     return _run_to_response(run)
+
+
+async def _publish_metering_event(org_id: str, event_type: str, tokens: int = 0) -> None:
+    """Publish a usage event to the tenant's metering Redpanda topic."""
+    try:
+        import json
+        from aiokafka import AIOKafkaProducer
+        brokers = os.environ.get("REDPANDA_BROKERS", "localhost:19092")
+        producer = AIOKafkaProducer(bootstrap_servers=brokers)
+        await producer.start()
+        try:
+            payload = json.dumps({"org_id": org_id, "event_type": event_type, "tokens": tokens}).encode()
+            await producer.send_and_wait(f"t.{org_id}.metering", payload)
+        finally:
+            await producer.stop()
+    except Exception as exc:
+        logger.debug("metering_publish.failed", error=str(exc))
+
 
 
 # ---------------------------------------------------------------------------
@@ -301,12 +325,9 @@ async def submit_decision(
 ) -> DecisionResponse:
     """
     Submit a HITL decision for a run that is in WAITING_HITL status.
-
-    Writes the HitlEvent to DB, then sends a `hitl-decision-signal` Signal to
-    the running Temporal workflow identified by `agent-workflow-{run_id}`.
-    The workflow is paused at a `workflow.wait_condition()` and will resume
-    based on the action (approve/reject/modify).
+    Requires REVIEWER role or above.
     """
+    assert_can_approve_hitl(current_user)
     run = await _get_run_or_404(run_id, current_user.org_id, session)
 
     if run.status != RunStatus.WAITING_HITL:

@@ -1,14 +1,16 @@
 """
 db/session.py — Async SQLModel engine + session dependency (Epic 1.1.2)
 
-Uses asyncpg as the driver.  Pass the async session via FastAPI's
-dependency injection system using the `SessionDep` type alias.
+Two session types:
+  SessionDep        — plain session, always on the `public` schema.
+  TenantSessionDep  — sets `search_path=tenant_{id}, public` per request (Epic 5.1.2).
 """
 
 import os
 from typing import AsyncGenerator, Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -57,10 +59,25 @@ async def create_db_and_tables() -> None:
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields an async DB session."""
+    """FastAPI dependency that yields an async DB session (public schema)."""
     async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
 
 
-# Annotated type alias for clean dependency declarations
+async def get_tenant_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency that yields a tenant-scoped DB session.
+
+    Reads `request.state.tenant_id` (set by TenantMiddleware) and executes
+    `SET LOCAL search_path TO tenant_{id}, public` so all queries within the
+    session are automatically scoped to the tenant's schema.
+    """
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        tenant_id = getattr(request.state, "tenant_id", None)
+        if tenant_id:
+            await session.execute(text(f"SET LOCAL search_path TO tenant_{tenant_id}, public"))
+        yield session
+
+
+# Annotated type aliases for clean dependency declarations
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+TenantSessionDep = Annotated[AsyncSession, Depends(get_tenant_session)]
