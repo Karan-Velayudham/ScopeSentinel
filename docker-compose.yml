@@ -275,11 +275,6 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:6333/healthz" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # ── Tenant Management Service (Phase 5) ──────────────────────────────────────
   tenant-mgmt:
@@ -306,7 +301,7 @@ services:
       redpanda:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
 
   # ── Audit Service (Phase 5) ───────────────────────────────────────────────────
   audit:

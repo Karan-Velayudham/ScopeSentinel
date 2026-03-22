@@ -7,6 +7,10 @@ Lifecycle:
   - CORS: allow all in dev (tighten in production via ALLOWED_ORIGINS env var)
 """
 
+from otel import configure_otel
+# Configure OTEL before other imports
+configure_otel()
+
 import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
