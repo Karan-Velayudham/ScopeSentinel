@@ -52,6 +52,7 @@ def _utcnow() -> datetime:
 def _run_to_response(run: WorkflowRun) -> RunResponse:
     return RunResponse(
         run_id=run.id,
+        workflow_id=run.workflow_id,
         ticket_id=run.ticket_id,
         status=run.status.value,
         dry_run=run.dry_run,
