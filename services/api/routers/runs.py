@@ -122,13 +122,22 @@ async def trigger_run(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> RunResponse:
-    """Trigger a new workflow run for the given ticket ID."""
-    log = logger.bind(ticket_id=body.ticket_id, user_id=current_user.id)
+    """Trigger a new workflow run."""
+    import json
+    log = logger.bind(user_id=current_user.id)
+    if body.ticket_id:
+        log = log.bind(ticket_id=body.ticket_id)
+    if body.workflow_id:
+        log = log.bind(workflow_id=body.workflow_id)
     log.info("api.trigger_run")
+
+    inputs_str = json.dumps(body.inputs) if body.inputs else None
 
     run = WorkflowRun(
         org_id=current_user.org_id,
         ticket_id=body.ticket_id,
+        workflow_id=body.workflow_id,
+        inputs_json=inputs_str,
         dry_run=body.dry_run,
         status=RunStatus.PENDING,
     )
@@ -136,22 +145,26 @@ async def trigger_run(
     await session.commit()
     await session.refresh(run)
 
-    # Dispatch to Temporal worker
-    try:
-        temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
-        temporal_client = await Client.connect(temporal_address)
+    # Dispatch to Temporal worker only for legacy Phase 1 (ticket_id present)
+    # Dynamic workflow execution (Phase 3) is not yet implemented
+    if run.ticket_id:
+        try:
+            temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
+            temporal_client = await Client.connect(temporal_address)
 
-        await temporal_client.start_workflow(
-            "AgentWorkflow",
-            args=[run.ticket_id, body.model or "gpt-4o"],
-            id=f"agent-workflow-{run.id}",
-            task_queue="agent-task-queue",
-        )
-    except Exception as e:
-        log.error("api.temporal_dispatch_failed", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to start workflow")
+            await temporal_client.start_workflow(
+                "AgentWorkflow",
+                args=[run.ticket_id, body.model or "gpt-4o"],
+                id=f"agent-workflow-{run.id}",
+                task_queue="agent-task-queue",
+            )
+            log.info("api.run_dispatched", run_id=run.id)
+        except Exception as e:
+            log.error("api.temporal_dispatch_failed", error=str(e))
+            raise HTTPException(status_code=500, detail="Failed to start workflow")
+    else:
+        log.info("api.dynamic_run_recorded", run_id=run.id, note="Execution engine not yet implemented")
 
-    log.info("api.run_dispatched", run_id=run.id)
     return _run_to_response(run)
 
 

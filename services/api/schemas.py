@@ -29,9 +29,17 @@ class PaginationMeta(BaseModel):
 # ---------------------------------------------------------------------------
 
 class TriggerRunRequest(BaseModel):
-    ticket_id: str = Field(
-        description="Jira ticket ID to process (e.g. SCRUM-8)",
-        examples=["SCRUM-8"],
+    ticket_id: Optional[str] = Field(
+        default=None,
+        description="Jira ticket ID to process (legacy Phase 1)",
+    )
+    workflow_id: Optional[str] = Field(
+        default=None,
+        description="ID of the visual workflow to run (Phase 2+)",
+    )
+    inputs: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Dynamic inputs matching the workflow's Input node schema",
     )
     dry_run: bool = Field(
         default=False,

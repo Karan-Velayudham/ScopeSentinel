@@ -106,7 +106,7 @@ export function AgentForm({ initialData, isEditing = false }: AgentFormProps) {
                         <Label htmlFor="model">Model</Label>
                         <Select
                             value={formData.model}
-                            onValueChange={(v) => setFormData({ ...formData, model: v })}
+                            onValueChange={(v) => setFormData({ ...formData, model: v || 'gpt-4o' })}
                         >
                             <SelectTrigger>
                                 <SelectValue placeholder="Select a model" />

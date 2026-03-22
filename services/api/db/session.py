@@ -48,6 +48,12 @@ async def create_db_and_tables() -> None:
         await conn.execute(text(
             "ALTER TABLE workflows ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'draft'"
         ))
+        await conn.execute(text(
+            "ALTER TABLE workflow_runs ALTER COLUMN ticket_id DROP NOT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS inputs_json VARCHAR"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
