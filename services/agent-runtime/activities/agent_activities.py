@@ -6,7 +6,7 @@ from temporalio.exceptions import ApplicationError
 
 import agentscope
 from agentscope.model import OpenAIChatModel
-from mcp_pool import load_client_pool
+from tools.remote_registry import build_remote_tool_registry
 from agents.planner_agent import PlannerAgent, PlannerOutput
 from agents.coder_agent import CoderAgent, CoderOutput
 from agents.analyzer_agent import AnalyzerAgent, AnalyzerOutput
@@ -52,17 +52,22 @@ async def fetch_ticket_activity(ticket_id: str) -> str:
     await sync_run_progress(run_id, status="RUNNING")
     await _save_io("fetch_ticket", {"ticket_id": ticket_id}, True)
     
-    clients, tool_registry = await load_client_pool("mcp_servers.yaml")
+    tool_registry = await build_remote_tool_registry()
     try:
         fetch_func = tool_registry["fetch_jira_ticket"]
         res = await fetch_func(ticket_id=ticket_id)
-        result = res.content[0]["text"] if hasattr(res, "content") else str(res)
-        
+        # Handle dict or string responses
+        if isinstance(res, dict):
+            result = res.get("content", [{"text": str(res)}])[0]["text"]
+        elif hasattr(res, "content"):
+            result = res.content[0]["text"]
+        else:
+            result = str(res)
+            
         await _save_io("fetch_ticket", {"content": result}, False)
         return result
-    finally:
-        for client in clients:
-            await client.close()
+    except Exception as exc:
+        return f"Error fetching ticket: {exc}"
 
 @activity.defn
 async def planning_activity(args: dict) -> dict:
@@ -73,7 +78,7 @@ async def planning_activity(args: dict) -> dict:
     agentscope.init(project="ScopeSentinel", name="PlannerRun")
     model = _build_model(model_name)
     
-    clients, tool_registry = await load_client_pool("mcp_servers.yaml")
+    tool_registry = await build_remote_tool_registry()
     try:
         agent_id = args.get("agent_id")
         custom_prompt = None
@@ -107,9 +112,8 @@ async def planning_activity(args: dict) -> dict:
         )
         await _save_io("planning", result, False)
         return result
-    finally:
-        for client in clients:
-            await client.close()
+    except Exception as exc:
+        raise ApplicationError(f"Planning failed: {exc}")
 
 @activity.defn
 async def coder_activity(args: dict) -> dict:
@@ -125,7 +129,7 @@ async def coder_activity(args: dict) -> dict:
     agentscope.init(project="ScopeSentinel", name="CoderRun")
     model = _build_model(model_name)
     
-    clients, tool_registry = await load_client_pool("mcp_servers.yaml")
+    tool_registry = await build_remote_tool_registry()
     try:
         reconstructed_plan = PlannerOutput(
             ticket_id=ticket_id,
@@ -170,9 +174,8 @@ async def coder_activity(args: dict) -> dict:
         )
         await _save_io("coder", result, False)
         return result
-    finally:
-        for client in clients:
-            await client.close()
+    except Exception as exc:
+        raise ApplicationError(f"Coder failed: {exc}")
 
 @activity.defn
 async def analyzer_activity(args: dict) -> dict:

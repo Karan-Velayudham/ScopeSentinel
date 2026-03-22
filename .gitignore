@@ -5,3 +5,4 @@
 *.pyc
 /services/api/venv/*
 /services/agent-runtime/venv/*
+/services/adapter-service/venv/*

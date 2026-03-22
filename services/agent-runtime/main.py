@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 import agentscope
 from agentscope.model import OpenAIChatModel
 
-from mcp_pool import load_client_pool
+from tools.remote_registry import build_remote_tool_registry
 from agents.planner_agent import PlannerAgent
 from agents.coder_agent import CoderAgent
 from hitl.hitl_gateway import HITLGateway
@@ -111,11 +111,11 @@ async def run_planner_workflow(ticket_id: str, *, dry_run: bool = False) -> None
         log.info("model.ready")
 
         # Step 1: Start dynamic MCP client pool
-        log.info("mcp_pool.loading", config="mcp_servers.yaml")
+        log.info("remote_registry.loading")
         try:
-            clients, tool_registry = await load_client_pool("mcp_servers.yaml")
-        except (FileNotFoundError, KeyError) as exc:
-            raise MCPConnectionError(f"Failed to load MCP pool: {exc}") from exc
+            tool_registry = await build_remote_tool_registry()
+        except Exception as exc:
+            raise MCPConnectionError(f"Failed to load remote tools: {exc}") from exc
 
         try:
             # Step 2: Fetch ticket
@@ -123,7 +123,13 @@ async def run_planner_workflow(ticket_id: str, *, dry_run: bool = False) -> None
             try:
                 fetch_func = tool_registry["fetch_jira_ticket"]
                 res = await fetch_func(ticket_id=ticket_id)
-                ticket_content = res.content[0]["text"] if hasattr(res, "content") else str(res)
+                # Handle dict or string responses
+                if isinstance(res, dict):
+                    ticket_content = res.get("content", [{"text": str(res)}])[0]["text"]
+                elif hasattr(res, "content"):
+                    ticket_content = res.content[0]["text"]
+                else:
+                    ticket_content = str(res)
             except Exception as exc:
                 raise MCPToolCallError(f"fetch_jira_ticket failed: {exc}") from exc
 
@@ -207,9 +213,7 @@ async def run_planner_workflow(ticket_id: str, *, dry_run: bool = False) -> None
                         raise LLMResponseError(f"Replanning failed: {exc}") from exc
 
         finally:
-            for client in clients:
-                await client.close()
-            log.info("mcp_pool.closed")
+            log.info("workflow.finished")
 
     except ConfigurationError as exc:
         log.error("config.error", error=str(exc))

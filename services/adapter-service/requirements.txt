@@ -1,0 +1,10 @@
+agentscope
+fastapi
+uvicorn
+python-dotenv
+structlog
+pydantic>=2.0.0
+httpx
+pytest
+pytest-asyncio
+pytest-cov

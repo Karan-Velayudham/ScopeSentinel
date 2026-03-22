@@ -14,6 +14,7 @@
 
 AGENT_DIR       := services/agent-runtime
 API_DIR         := services/api
+ADAPTER_DIR     := services/adapter-service
 VENV            := $(AGENT_DIR)/venv
 PYTHON          := $(VENV)/bin/python
 PIP             := $(VENV)/bin/pip
@@ -24,12 +25,18 @@ API_PYTHON      := $(API_VENV)/bin/python
 API_PIP         := $(API_VENV)/bin/pip
 API_PYTEST      := $(API_VENV)/bin/pytest
 
+ADAPTER_VENV    := $(ADAPTER_DIR)/venv
+ADAPTER_PYTHON  := $(ADAPTER_VENV)/bin/python
+ADAPTER_PIP     := $(ADAPTER_VENV)/bin/pip
+ADAPTER_PYTEST  := $(ADAPTER_VENV)/bin/pytest
+
 IMAGE_RUNTIME   := scopesentinel-agent-runtime:latest
 IMAGE_API       := scopesentinel-api:latest
+IMAGE_ADAPTER   := scopesentinel-adapter:latest
 TICKET          ?= SCRUM-8
 
-.PHONY: help install install-api dev api api-local api-stop \
-        test test-api build migrate seed run run-docker lint clean
+.PHONY: help install install-api install-adapter dev api api-local adapter-local api-stop \
+        test test-api test-adapter build migrate seed run run-docker lint clean
 
 # ── Default: show help ────────────────────────────────────────────────────────
 help:
@@ -51,6 +58,11 @@ help:
 	@echo "    make seed             Seed the database (also runs on startup)"
 	@echo "    make test-api         Run API service tests"
 	@echo ""
+	@echo "  Adapter Service:"
+	@echo "    make install-adapter  Install Adapter service Python deps"
+	@echo "    make adapter-local    Run Adapter FastAPI dev server locally"
+	@echo "    make test-adapter     Run Adapter service tests"
+	@echo ""
 	@echo "  General:"
 	@echo "    make build            Build all Docker images"
 	@echo "    make lint             Run ruff on both services"
@@ -68,6 +80,12 @@ install-api:
 	python3 -m venv $(API_VENV)
 	$(API_PIP) install --upgrade pip
 	$(API_PIP) install -r $(API_DIR)/requirements.txt
+
+# ── Install Adapter deps ──────────────────────────────────────────────────────
+install-adapter:
+	python3 -m venv $(ADAPTER_VENV)
+	$(ADAPTER_PIP) install --upgrade pip
+	$(ADAPTER_PIP) install -r $(ADAPTER_DIR)/requirements.txt
 
 # ── Dev: install + healthcheck ────────────────────────────────────────────────
 dev: install
@@ -90,6 +108,9 @@ api-stop:
 api-local: install-api
 	cd $(API_DIR) && "$(abspath $(API_PYTHON))" -m uvicorn main:app --reload --port 8000
 
+adapter-local: install-adapter
+	cd $(ADAPTER_DIR) && "$(abspath $(ADAPTER_PYTHON))" -m uvicorn main:app --reload --port 8002
+
 # ── Run Alembic migrations ────────────────────────────────────────────────────
 migrate: install-api
 	cd $(API_DIR) && "$(abspath $(API_PYTHON))" -m alembic upgrade head
@@ -106,10 +127,15 @@ test: install
 test-api: install-api
 	cd $(API_DIR) && "$(abspath $(API_PYTEST))" tests/ -v
 
+# ── Adapter service tests ─────────────────────────────────────────────────────
+test-adapter: install-adapter
+	cd $(ADAPTER_DIR) && "$(abspath $(ADAPTER_PYTEST))" tests/ -v
+
 # ── Build all Docker images ───────────────────────────────────────────────────
 build:
 	docker build -t $(IMAGE_RUNTIME) $(AGENT_DIR)
 	docker build -t $(IMAGE_API) $(API_DIR)
+	docker build -t $(IMAGE_ADAPTER) $(ADAPTER_DIR)
 
 # ── Run CLI via Python ────────────────────────────────────────────────────────
 run: install
@@ -124,9 +150,10 @@ run-docker: build
 		$(IMAGE_RUNTIME) --ticket $(TICKET)
 
 # ── Lint both services ────────────────────────────────────────────────────────
-lint: install install-api
+lint: install install-api install-adapter
 	$(VENV)/bin/ruff check $(AGENT_DIR) --exclude $(AGENT_DIR)/venv
 	$(API_VENV)/bin/ruff check $(API_DIR) --exclude $(API_DIR)/venv
+	$(ADAPTER_VENV)/bin/ruff check $(ADAPTER_DIR) --exclude $(ADAPTER_DIR)/venv
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 clean:

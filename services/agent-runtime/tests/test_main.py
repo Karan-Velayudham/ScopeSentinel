@@ -27,12 +27,6 @@ def _make_tool_registry():
     }
 
 
-def _make_mock_clients():
-    """Return a list of closeable mock clients."""
-    client = AsyncMock()
-    return [client]
-
-
 # ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
@@ -57,7 +51,7 @@ async def test_run_healthcheck(mock_build_model, mock_agentscope, capsys):
 # Full workflow — approve
 # ---------------------------------------------------------------------------
 
-@patch("main.load_client_pool")
+@patch("main.build_remote_tool_registry")
 @patch("main.CoderAgent")
 @patch("main.HITLGateway")
 @patch("main.PlannerAgent")
@@ -65,11 +59,10 @@ async def test_run_healthcheck(mock_build_model, mock_agentscope, capsys):
 @patch("main.agentscope")
 async def test_run_planner_workflow_approve(
     mock_agentscope, mock_build_model, mock_planner_cls,
-    mock_hitl_cls, mock_coder_cls, mock_load_pool
+    mock_hitl_cls, mock_coder_cls, mock_build_registry
 ):
     tool_registry = _make_tool_registry()
-    mock_clients = _make_mock_clients()
-    mock_load_pool.return_value = (mock_clients, tool_registry)
+    mock_build_registry.return_value = tool_registry
 
     mock_plan = MagicMock()
     mock_plan.raw_plan = "The plan"
@@ -92,7 +85,7 @@ async def test_run_planner_workflow_approve(
 
     await run_planner_workflow("SCRUM-1")
 
-    mock_load_pool.assert_called_once_with("mcp_servers.yaml")
+    mock_build_registry.assert_called_once()
     mock_planner.plan.assert_called_once_with("SCRUM-1", tool_registry)
     mock_hitl.present_and_await.assert_called_once_with(mock_plan)
     tool_registry["update_jira_ticket"].assert_called_once()
@@ -102,27 +95,23 @@ async def test_run_planner_workflow_approve(
         plan=mock_plan,
         tool_registry=tool_registry,
     )
-    # All clients must be closed (via finally)
-    for client in mock_clients:
-        client.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
 # Full workflow — reject
 # ---------------------------------------------------------------------------
 
-@patch("main.load_client_pool")
+@patch("main.build_remote_tool_registry")
 @patch("main.HITLGateway")
 @patch("main.PlannerAgent")
 @patch("main._build_model")
 @patch("main.agentscope")
 async def test_run_planner_workflow_reject(
     mock_agentscope, mock_build_model, mock_planner_cls,
-    mock_hitl_cls, mock_load_pool, capsys
+    mock_hitl_cls, mock_build_registry, capsys
 ):
     tool_registry = _make_tool_registry()
-    mock_clients = _make_mock_clients()
-    mock_load_pool.return_value = (mock_clients, tool_registry)
+    mock_build_registry.return_value = tool_registry
 
     mock_planner = MagicMock()
     mock_planner.plan = AsyncMock(return_value=MagicMock())
@@ -140,29 +129,25 @@ async def test_run_planner_workflow_reject(
     assert "Workflow aborted by reviewer" in captured.out
     # update_jira_ticket must NOT be called
     tool_registry["update_jira_ticket"].assert_not_called()
-    # Clients still closed
-    for client in mock_clients:
-        client.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
 # Full workflow — max revisions
 # ---------------------------------------------------------------------------
 
-@patch("main.load_client_pool")
+@patch("main.build_remote_tool_registry")
 @patch("main.HITLGateway")
 @patch("main.PlannerAgent")
 @patch("main._build_model")
 @patch("main.agentscope")
 async def test_run_planner_workflow_max_revisions(
     mock_agentscope, mock_build_model, mock_planner_cls,
-    mock_hitl_cls, mock_load_pool, capsys
+    mock_hitl_cls, mock_build_registry, capsys
 ):
     from main import MAX_REVISIONS
 
     tool_registry = _make_tool_registry()
-    mock_clients = _make_mock_clients()
-    mock_load_pool.return_value = (mock_clients, tool_registry)
+    mock_build_registry.return_value = tool_registry
 
     mock_planner = MagicMock()
     mock_planner.plan = AsyncMock(return_value=MagicMock())
@@ -184,5 +169,3 @@ async def test_run_planner_workflow_max_revisions(
 
     assert mock_hitl.present_and_await.call_count == MAX_REVISIONS + 1
     assert mock_planner.replan.call_count == MAX_REVISIONS
-    for client in mock_clients:
-        client.close.assert_called_once()
