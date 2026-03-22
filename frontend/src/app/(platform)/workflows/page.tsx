@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Trash2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api-client';
 
 export default function WorkflowsPage() {
     const [workflows, setWorkflows] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchWorkflows = () => {
-        fetch('http://localhost:8000/api/workflows')
+        apiFetch('/api/workflows')
             .then(res => res.json())
             .then(data => {
                 setWorkflows(data.items || []);
@@ -28,7 +29,7 @@ export default function WorkflowsPage() {
     const handleDelete = async (id: string) => {
         if (!confirm("Are you sure you want to delete this workflow?")) return;
         try {
-            await fetch(`http://localhost:8000/api/workflows/${id}`, { method: 'DELETE' });
+            await apiFetch(`/api/workflows/${id}`, { method: 'DELETE' });
             fetchWorkflows();
         } catch (e) {
             console.error(e);
