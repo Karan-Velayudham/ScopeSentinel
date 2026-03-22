@@ -41,7 +41,7 @@ export default function TeamSettingsPage() {
     // Invite state
     const [inviteOpen, setInviteOpen] = useState(false);
     const [inviteEmail, setInviteEmail] = useState("");
-    const [inviteRole, setInviteRole] = useState("DEVELOPER");
+    const [inviteRole, setInviteRole] = useState("developer");
     const [inviting, setInviting] = useState(false);
 
     const fetchUsers = async () => {
@@ -68,7 +68,7 @@ export default function TeamSettingsPage() {
             await apiPost("/api/users/invite", { email: inviteEmail.trim(), role: inviteRole });
             setInviteOpen(false);
             setInviteEmail("");
-            setInviteRole("DEVELOPER");
+            setInviteRole("developer");
             await fetchUsers();
         } catch (e: any) {
             alert(`Failed to invite user: ${e.message}`);
@@ -130,15 +130,15 @@ export default function TeamSettingsPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="role">Role</Label>
-                                <Select value={inviteRole} onValueChange={(val) => setInviteRole(val || "DEVELOPER")}>
+                                <Select value={inviteRole} onValueChange={(val) => setInviteRole(val || "developer")}>
                                     <SelectTrigger id="role">
                                         <SelectValue placeholder="Select a role" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="ORG_ADMIN">Admin (Full Access)</SelectItem>
-                                        <SelectItem value="DEVELOPER">Developer (Can Trigger Runs)</SelectItem>
-                                        <SelectItem value="REVIEWER">Reviewer (Can Approve HITL)</SelectItem>
-                                        <SelectItem value="VIEWER">Viewer (Read-only)</SelectItem>
+                                        <SelectItem value="admin">Admin (Full Access)</SelectItem>
+                                        <SelectItem value="developer">Developer (Can Trigger Runs)</SelectItem>
+                                        <SelectItem value="reviewer">Reviewer (Can Approve HITL)</SelectItem>
+                                        <SelectItem value="viewer">Viewer (Read-only)</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -195,16 +195,16 @@ export default function TeamSettingsPage() {
                                         <TableCell>
                                             <Select
                                                 value={user.role}
-                                                onValueChange={(val) => handleRoleChange(user.id, val || "VIEWER")}
+                                                onValueChange={(val) => handleRoleChange(user.id, val || "viewer")}
                                             >
                                                 <SelectTrigger className="w-[140px] h-8 text-xs">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="ORG_ADMIN">Admin</SelectItem>
-                                                    <SelectItem value="DEVELOPER">Developer</SelectItem>
-                                                    <SelectItem value="REVIEWER">Reviewer</SelectItem>
-                                                    <SelectItem value="VIEWER">Viewer</SelectItem>
+                                                    <SelectItem value="admin">Admin</SelectItem>
+                                                    <SelectItem value="developer">Developer</SelectItem>
+                                                    <SelectItem value="reviewer">Reviewer</SelectItem>
+                                                    <SelectItem value="viewer">Viewer</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </TableCell>
