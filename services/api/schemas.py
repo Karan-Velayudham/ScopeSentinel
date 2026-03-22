@@ -68,7 +68,8 @@ class DecisionRequest(BaseModel):
 class RunResponse(BaseModel):
     """Compact run summary — used in list and POST response."""
     run_id: str
-    ticket_id: str
+    workflow_id: Optional[str] = None
+    ticket_id: Optional[str] = None
     status: str
     dry_run: bool
     created_at: datetime
@@ -99,7 +100,7 @@ class RunDetailResponse(BaseModel):
     """Full run with steps and HITL history."""
     run_id: str
     workflow_id: Optional[str] = None
-    ticket_id: str
+    ticket_id: Optional[str] = None
     status: str
     dry_run: bool
     created_at: datetime

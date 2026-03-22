@@ -185,7 +185,7 @@ export function DesignerComponent({
             });
             if (res.ok) {
                 const data = await res.json();
-                router.push(`/runs/${data.id}`);
+                router.push(`/runs/${data.run_id}`);
             } else {
                 const err = await res.json();
                 alert(`Run failed: ${err.detail}`);
