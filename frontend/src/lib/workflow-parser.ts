@@ -1,59 +1,65 @@
 import { Node, Edge } from '@xyflow/react';
 import yaml from 'js-yaml';
 
+// Map React Flow node types → DSL step types
+const NODE_TYPE_MAP: Record<string, string> = {
+    agentNode: 'agent',
+    toolNode: 'tool',
+    hitlNode: 'hitl',
+    conditionNode: 'condition',
+    inputNode: 'input',
+    outputNode: 'output',
+    delayNode: 'delay',
+};
+
 export function workflowGraphToYaml(name: string, description: string, nodes: Node[], edges: Edge[]): string {
     // Find trigger node
     const triggerNode = nodes.find(n => n.type === 'triggerNode');
 
-    const trigger = triggerNode ? {
-        type: triggerNode.data.type || 'unknown'
-    } : { type: 'manual' };
+    // Build trigger block — use triggerType (new nodes) or type (legacy)
+    const triggerData = triggerNode?.data as any;
+    const trigger: Record<string, any> = {
+        type: triggerData?.triggerType || triggerData?.type || 'manual',
+    };
+    if (triggerData?.schedule) trigger.schedule = triggerData.schedule;
+    if (triggerData?.eventType) trigger.event = triggerData.eventType;
+    if (triggerData?.eventFilter) trigger.filter = triggerData.eventFilter;
 
-    // Generate steps
+    // Generate steps — exclude trigger nodes (they go in the trigger block)
     const steps = nodes
         .filter(n => n.type !== 'triggerNode')
-        .map((n) => {
-            // Find outgoing edges to determine "next" logic
+        .map(n => {
             const outEdges = edges.filter(e => e.source === n.id);
-            let next: string[] | undefined = undefined;
+            const next = outEdges.length > 0 ? outEdges.map(e => e.target) : undefined;
 
-            if (outEdges.length > 0) {
-                next = outEdges.map(e => e.target);
-            }
+            const typeStr = NODE_TYPE_MAP[n.type!] || 'agent';
+            const nodeData = n.data as any;
 
-            let typeStr = 'agent';
-            if (n.type === 'toolNode') typeStr = 'tool';
-            if (n.type === 'hitlNode') typeStr = 'hitl';
-            if (n.type === 'conditionNode') typeStr = 'condition';
+            // Strip display-only fields that shouldn't go into the DSL
+            const { label, agentType, triggerType, connector_name, ...cleanData } = nodeData;
+            const ui_metadata = { position: n.position };
 
-            // We preserve the UI position in inputs so we can place it on load
-            const ui_metadata = {
-                position: n.position
-            };
-
-            const agent_id = n.data.agent_id || n.data.agentId;
-
-            return {
+            const step: Record<string, any> = {
                 id: n.id,
-                name: n.data.label || typeStr,
+                name: nodeData.label || typeStr,
                 type: typeStr,
-                agent_id,
-                inputs: {
-                    ...n.data,
-                    ui_metadata
-                },
-                next
+                inputs: { ...cleanData, ui_metadata },
             };
+
+            if (nodeData.agent_id) step.agent_id = nodeData.agent_id;
+            if (next) step.next = next;
+
+            return step;
         });
 
-    const workflowObj = {
+    const workflowObj: Record<string, any> = {
         name: name || 'Untitled Workflow',
-        description: description || undefined,
         trigger,
-        steps: steps.length > 0 ? steps : []
+        steps: steps.length > 0 ? steps : [],
     };
+    if (description) workflowObj.description = description;
 
-    return yaml.dump(workflowObj, { noRefs: true });
+    return yaml.dump(workflowObj, { noRefs: true, skipInvalid: true });
 }
 
 export function yamlToWorkflowGraph(yamlStr: string): { nodes: Node[], edges: Edge[], name: string, description: string } {
@@ -76,7 +82,7 @@ export function yamlToWorkflowGraph(yamlStr: string): { nodes: Node[], edges: Ed
         return { nodes, edges, name: 'Untitled Workflow', description: '' };
     }
 
-    // 1. Create Trigger Node
+    // 1. Trigger Node
     const triggerId = 'trigger-1';
     nodes.push({
         id: triggerId,
@@ -84,60 +90,70 @@ export function yamlToWorkflowGraph(yamlStr: string): { nodes: Node[], edges: Ed
         position: { x: 50, y: 50 },
         data: {
             label: 'Trigger',
-            type: data.trigger?.type || 'manual'
-        }
+            triggerType: data.trigger?.type || 'manual',
+            schedule: data.trigger?.schedule,
+            eventType: data.trigger?.event,
+            eventFilter: data.trigger?.filter,
+        },
     });
 
-    // 2. Create nodes for steps
+    // 2. Step Nodes
+    const DSL_TO_NODE: Record<string, string> = {
+        agent: 'agentNode',
+        tool: 'toolNode',
+        hitl: 'hitlNode',
+        condition: 'conditionNode',
+        input: 'inputNode',
+        output: 'outputNode',
+        delay: 'delayNode',
+    };
+
     const steps = data.steps || [];
     let yOffset = 150;
 
     steps.forEach((step: any) => {
-        let nodeType = 'agentNode';
-        if (step.type === 'tool') nodeType = 'toolNode';
-        if (step.type === 'hitl') nodeType = 'hitlNode';
-        if (step.type === 'condition') nodeType = 'conditionNode';
+        const nodeType = DSL_TO_NODE[step.type] || 'agentNode';
 
-        let position = { x: 50, y: yOffset };
+        let position = { x: 350, y: yOffset };
         if (step.inputs?.ui_metadata?.position) {
             position = step.inputs.ui_metadata.position;
         } else {
-            yOffset += 100;
+            yOffset += 130;
         }
 
-        // copy inputs minus ui_metadata into data
-        const nodeData = {
-            ...step.inputs,
-            label: step.name,
-            agentId: step.agent_id || step.inputs?.agentId
-        };
-        delete nodeData.ui_metadata;
+        const { ui_metadata, ...restInputs } = step.inputs || {};
 
         nodes.push({
             id: step.id,
             type: nodeType,
             position,
-            data: nodeData
+            data: {
+                ...restInputs,
+                label: step.name,
+                agent_id: step.agent_id || restInputs?.agent_id,
+            },
         });
 
-        // 3. Create edges
+        // Edges from next[]
         if (step.next && Array.isArray(step.next)) {
             step.next.forEach((nextId: string) => {
                 edges.push({
                     id: `e-${step.id}-${nextId}`,
                     source: step.id,
-                    target: nextId
+                    target: nextId,
+                    animated: true,
                 });
             });
         }
     });
 
-    // Connect trigger to first step if no explicit trigger edge exists
-    if (steps.length > 0) {
+    // Auto-connect trigger → first step if no explicit edges yet
+    if (steps.length > 0 && edges.filter(e => e.source === triggerId).length === 0) {
         edges.push({
             id: `e-${triggerId}-${steps[0].id}`,
             source: triggerId,
-            target: steps[0].id
+            target: steps[0].id,
+            animated: true,
         });
     }
 
@@ -145,6 +161,6 @@ export function yamlToWorkflowGraph(yamlStr: string): { nodes: Node[], edges: Ed
         nodes,
         edges,
         name: data.name || 'Untitled Workflow',
-        description: data.description || ''
+        description: data.description || '',
     };
 }

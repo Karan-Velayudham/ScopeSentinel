@@ -41,8 +41,13 @@ engine = create_async_engine(
 
 async def create_db_and_tables() -> None:
     """Create all tables (called on startup). Migrations via Alembic in prod."""
+    from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+        # Lightweight column migrations — safe to re-run (idempotent)
+        await conn.execute(text(
+            "ALTER TABLE workflows ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'draft'"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

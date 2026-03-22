@@ -142,7 +142,7 @@ class HealthResponse(BaseModel):
 
 class WorkflowStepDSL(BaseModel):
     id: str = Field(description="Unique step ID within this workflow")
-    type: Literal["trigger", "agent", "tool", "condition", "hitl", "delay"]
+    type: str = Field(description="Step type: agent | tool | condition | hitl | delay | input | output | etc.")
     name: str
     agent_id: Optional[str] = Field(default=None, description="Reference to a custom agent")
     inputs: dict[str, Any] = Field(default_factory=dict)
@@ -151,8 +151,8 @@ class WorkflowStepDSL(BaseModel):
 class WorkflowDSL(BaseModel):
     name: str = Field(description="Name of the workflow")
     description: Optional[str] = None
-    trigger: dict[str, Any] = Field(description="Trigger configuration")
-    steps: list[WorkflowStepDSL]
+    trigger: dict[str, Any] = Field(default_factory=dict, description="Trigger configuration")
+    steps: list[WorkflowStepDSL] = Field(default_factory=list)
 
 class WorkflowCreateRequest(BaseModel):
     name: str
