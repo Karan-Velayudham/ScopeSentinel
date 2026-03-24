@@ -88,189 +88,49 @@ class JiraAdapter(BaseOAuthAdapter):
             return jira_resources[0]["id"]
 
     async def discover_capabilities(self, access_token: str) -> List[Capability]:
-        async with httpx.AsyncClient() as client:
-            res = await client.get(
-                "https://api.atlassian.com/oauth/token/accessible-resources",
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
-            res.raise_for_status()
-            resources = res.json()
-            
-            if not resources:
-                return []
-            
-            # Assume first resource's scopes represent the token's permissions
-            granted_scopes = resources[0].get("scopes", [])
-            
-            all_capabilities = [
-                Capability(
-                    name="get_issue",
-                    description="Fetch a Jira issue by key (e.g., PROJ-123).",
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "issue_key": {"type": "string", "description": "The Jira issue key."}
-                        },
-                        "required": ["issue_key"]
-                    },
-                    scopes_required=["read:jira-work"]
-                ),
-                Capability(
-                    name="create_issue",
-                    description="Creates a new issue in a Jira project.",
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "project_key": {"type": "string", "description": "Project key (e.g., 'PROJ')."},
-                            "summary": {"type": "string", "description": "Short summary of the issue."},
-                            "description": {"type": "string", "description": "Detailed description of the issue."},
-                            "issue_type": {"type": "string", "description": "Type: Bug, Story, Task.", "default": "Task"}
-                        },
-                        "required": ["project_key", "summary"]
-                    },
-                    scopes_required=["write:jira-work"]
-                ),
-                Capability(
-                    name="search_issues",
-                    description="Search for Jira issues using JQL.",
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "jql": {"type": "string", "description": "JQL query string."}
-                        },
-                        "required": ["jql"]
-                    },
-                    scopes_required=["read:jira-work"]
-                ),
-                Capability(
-                    name="add_comment",
-                    description="Adds a comment to an existing Jira issue.",
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "issue_key": {"type": "string", "description": "The Jira issue key."},
-                            "body": {"type": "string", "description": "The comment text."}
-                        },
-                        "required": ["issue_key", "body"]
-                    },
-                    scopes_required=["write:jira-work"]
-                ),
-                Capability(
-                    name="update_issue",
-                    description="Updates an existing Jira issue.",
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "issue_key": {"type": "string", "description": "The Jira issue key."},
-                            "summary": {"type": "string", "description": "New summary (optional)."},
-                            "description": {"type": "string", "description": "New description (optional)."}
-                        },
-                        "required": ["issue_key"]
-                    },
-                    scopes_required=["write:jira-work"]
-                )
-            ]
-            
-            # Filter capabilities based on granted scopes
-            return [
-                cap for cap in all_capabilities 
-                if all(scope in granted_scopes for scope in cap.scopes_required)
-            ]
+        from mcp.client.sse import sse_client
+        from mcp.client.session import ClientSession
+        
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+        
+        try:
+            async with sse_client("https://mcp.atlassian.com/v1/mcp", headers=headers) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    tools_result = await session.list_tools()
+                    
+                    capabilities = []
+                    for t in tools_result.tools:
+                        capabilities.append(
+                            Capability(
+                                name=t.name,
+                                description=t.description or "",
+                                input_schema=t.inputSchema or {},
+                                scopes_required=[]
+                            )
+                        )
+                    return capabilities
+        except Exception as e:
+            import structlog
+            logger = structlog.get_logger()
+            logger.error("jira_adapter.discover_capabilities_failed", error=str(e))
+            return []
 
     async def execute_tool(self, tool_name: str, arguments: dict, access_token: str, provider_metadata: dict) -> Any:
-        cloud_id = provider_metadata.get("cloud_id")
-        if not cloud_id:
-            raise ValueError("Missing cloud_id in provider metadata")
-
-        base_url = f"https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3"
-        async with httpx.AsyncClient() as client:
-            headers = {
-                "Authorization": f"Bearer {access_token}",
-                "Accept": "application/json",
-                "Content-Type": "application/json"
-            }
-
-            if tool_name == "get_issue":
-                issue_key = arguments["issue_key"]
-                res = await client.get(f"{base_url}/issue/{issue_key}", headers=headers)
-                res.raise_for_status()
-                return res.json()
-
-            elif tool_name == "create_issue":
-                payload = {
-                    "fields": {
-                        "project": {"key": arguments["project_key"]},
-                        "summary": arguments["summary"],
-                        "description": {
-                            "type": "doc",
-                            "version": 1,
-                            "content": [
-                                {
-                                    "type": "paragraph",
-                                    "content": [
-                                        {"type": "text", "text": arguments.get("description", "")}
-                                    ]
-                                }
-                            ]
-                        },
-                        "issuetype": {"name": arguments.get("issue_type", "Task")}
-                    }
-                }
-                res = await client.post(f"{base_url}/issue", headers=headers, json=payload)
-                res.raise_for_status()
-                return res.json()
-
-            elif tool_name == "search_issues":
-                res = await client.post(
-                    f"{base_url}/search",
-                    headers=headers,
-                    json={"jql": arguments["jql"]}
-                )
-                res.raise_for_status()
-                return res.json()
-
-            elif tool_name == "add_comment":
-                issue_key = arguments["issue_key"]
-                payload = {
-                    "body": {
-                        "type": "doc",
-                        "version": 1,
-                        "content": [
-                            {
-                                "type": "paragraph",
-                                "content": [
-                                    {"type": "text", "text": arguments["body"]}
-                                ]
-                            }
-                        ]
-                    }
-                }
-                res = await client.post(f"{base_url}/issue/{issue_key}/comment", headers=headers, json=payload)
-                res.raise_for_status()
-                return res.json()
-
-            elif tool_name == "update_issue":
-                issue_key = arguments["issue_key"]
-                fields = {}
-                if "summary" in arguments:
-                    fields["summary"] = arguments["summary"]
-                if "description" in arguments:
-                    fields["description"] = {
-                        "type": "doc",
-                        "version": 1,
-                        "content": [
-                            {
-                                "type": "paragraph",
-                                "content": [
-                                    {"type": "text", "text": arguments["description"]}
-                                ]
-                            }
-                        ]
-                    }
+        from mcp.client.sse import sse_client
+        from mcp.client.session import ClientSession
+        
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+        
+        async with sse_client("https://mcp.atlassian.com/v1/mcp", headers=headers) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, arguments)
                 
-                res = await client.put(f"{base_url}/issue/{issue_key}", headers=headers, json={"fields": fields})
-                res.raise_for_status()
-                return {"status": "success", "issue_key": issue_key}
+                # Convert the CallToolResult into a serializable dictionary
+                return result.model_dump()
 
-            else:
-                raise ValueError(f"Unknown tool: {tool_name}")
