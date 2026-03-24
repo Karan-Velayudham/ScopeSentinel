@@ -27,5 +27,6 @@ ENV PATH="/home/sentinel/.local/bin:$PATH"
 ENV LOG_FORMAT=json
 ENV LOG_LEVEL=info
 
+EXPOSE 8005
 ENTRYPOINT ["python"]
 CMD ["main.py"]

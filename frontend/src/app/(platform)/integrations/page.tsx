@@ -62,7 +62,7 @@ export default function IntegrationsPage() {
             // In a real app, use the current user's session.
             const org_id = "org_123"; // dev-default
             const user_id = "user_456"; // dev-default
-            const authUrl = `http://localhost:8002/api/connections/oauth/${connectorId}/authorize?org_id=${org_id}&user_id=${user_id}`;
+            const authUrl = `http://localhost:8005/api/connections/oauth/${connectorId}/authorize?org_id=${org_id}&user_id=${user_id}`;
             window.location.href = authUrl;
             return;
         }

@@ -114,6 +114,7 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       TEMPORAL_ADDRESS: "temporal:7233"
       REDPANDA_BROKERS: "redpanda:9092"
+      TENANT_MGMT_URL: "http://tenant-mgmt:8002"
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:

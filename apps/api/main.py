@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from db.seed import run_seed
 from db.session import SessionDep, create_db_and_tables, get_session
 from middleware import TenantMiddleware, AuditMiddleware
-from routers import agents, connectors, health, runs, workflows, users, oauth_connections, audit
+from routers import agents, connectors, health, runs, workflows, users, oauth_connections, audit, auth
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -113,6 +113,7 @@ app.include_router(agents.router)
 app.include_router(users.router)
 app.include_router(oauth_connections.router)
 app.include_router(audit.router)
+app.include_router(auth.router)
 
 
 @app.get("/", include_in_schema=False)

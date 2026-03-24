@@ -23,6 +23,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         signIn: "/auth/signin",
     },
     callbacks: {
+        async signIn({ user }) {
+            if (!user.email) return false;
+            try {
+                // Call the API sync endpoint to ensure Org/User exist
+                const api_url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${api_url}/api/auth/sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: user.email,
+                        name: user.name || user.email.split('@')[0],
+                    })
+                });
+                if (!res.ok) return false;
+                return true;
+            } catch (e) {
+                console.error("Auth sync failed", e);
+                return false;
+            }
+        },
         authorized({ auth, request: { nextUrl } }) {
             const isLoggedIn = !!auth?.user
             const isOnAuthPage = nextUrl.pathname.startsWith("/auth")
