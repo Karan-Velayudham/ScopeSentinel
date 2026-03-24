@@ -102,7 +102,7 @@ services:
   # ── FastAPI Control Plane ────────────────────────────────────────────────────
   api:
     build:
-      context: ./services/api
+      context: ./apps/api
       dockerfile: Dockerfile
     image: scopesentinel-api:latest
     container_name: scopesentinel-api
@@ -173,7 +173,7 @@ services:
   # ── Temporal Worker (Agent Runtime) ──────────────────────────────────────────
   temporal-worker:
     build:
-      context: ./services/agent-runtime
+      context: ./apps/agent-runtime
       dockerfile: Dockerfile
       target: runtime
     image: scopesentinel-agent-runtime:latest
@@ -203,7 +203,7 @@ services:
   # ── Agent Runtime (CLI mode — kept for backward compat) ──────────────────────
   agent-runtime:
     build:
-      context: ./services/agent-runtime
+      context: ./apps/agent-runtime
       dockerfile: Dockerfile
       target: runtime
     image: scopesentinel-agent-runtime:latest
@@ -222,7 +222,7 @@ services:
   # ── Webhook Receiver (Phase 3) ───────────────────────────────────────────────
   webhook-receiver:
     build:
-      context: ./services/webhook-receiver
+      context: ./apps/webhook-receiver
       dockerfile: Dockerfile
     image: scopesentinel-webhook-receiver:latest
     container_name: scopesentinel-webhook-receiver
@@ -238,7 +238,7 @@ services:
   # ── Trigger Engine (Phase 3) ─────────────────────────────────────────────────
   trigger-engine:
     build:
-      context: ./services/trigger-engine
+      context: ./apps/trigger-engine
       dockerfile: Dockerfile
     image: scopesentinel-trigger-engine:latest
     container_name: scopesentinel-trigger-engine
@@ -282,7 +282,7 @@ services:
   # ── Tenant Management Service (Phase 5) ──────────────────────────────────────
   tenant-mgmt:
     build:
-      context: ./services/tenant-mgmt
+      context: ./apps/tenant-mgmt
       dockerfile: Dockerfile
     image: scopesentinel-tenant-mgmt:latest
     container_name: scopesentinel-tenant-mgmt
@@ -309,7 +309,7 @@ services:
   # ── Audit Service (Phase 5) ───────────────────────────────────────────────────
   audit:
     build:
-      context: ./services/audit
+      context: ./apps/audit
       dockerfile: Dockerfile
     image: scopesentinel-audit:latest
     container_name: scopesentinel-audit
@@ -332,7 +332,7 @@ services:
   # ── Metering Service (Phase 5) ────────────────────────────────────────────────
   metering:
     build:
-      context: ./services/metering
+      context: ./apps/metering
       dockerfile: Dockerfile
     image: scopesentinel-metering:latest
     container_name: scopesentinel-metering
