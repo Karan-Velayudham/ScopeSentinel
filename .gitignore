@@ -3,6 +3,6 @@
 /workspace/*
 !/workspace/.gitkeep
 *.pyc
-/services/api/venv/*
-/services/agent-runtime/venv/*
-/services/adapter-service/venv/*
+/apps/api/venv/*
+/apps/agent-runtime/venv/*
+/apps/adapter-service/venv/*
