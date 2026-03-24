@@ -78,7 +78,8 @@ async def callback(request: Request):
             "access_token": token_data["access_token"],
             "refresh_token": token_data.get("refresh_token", ""),
             "expires_at": expires_at,
-            "scopes": json.dumps(token_data.get("scopes", []))
+            "scopes": json.dumps(token_data.get("scopes", [])),
+            "provider_metadata": token_data.get("provider_metadata", "{}")
         }
         res = await client.post(internal_save_url, json=payload)
         res.raise_for_status()

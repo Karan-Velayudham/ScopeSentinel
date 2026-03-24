@@ -11,6 +11,7 @@ When executing tasks, writing code, or generating implementation plans for **Sco
 - **Human in the Loop**: Human judgment remains the final gate for critical decisions.
 - **Parallel by Default**: Design for concurrent agent execution and tight feedback loops.
 - **Tool Integration > Model Dependency**: Prioritize solid, deterministic integrations alongside AI adaptability.
+- **No Mock Implementations**: Always provide real, functional code. Avoid placeholders, mock data, or "coming soon" logic. Break large tasks into incremental, PR-ready steps.
 
 ## 1. 🏗️ Architectural Constraints
 - **Self-Hosted Preference**: Always suggest open-source, self-hosted infrastructure (e.g., PostgreSQL, Redis, Redpanda, Temporal) over AWS/GCP managed equivalents unless explicitly instructed otherwise.

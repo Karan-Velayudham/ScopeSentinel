@@ -7,6 +7,7 @@ ScopeSentinel is a multi-tenant, event-driven, AI-augmented workflow automation 
 - **Self-Hosted Preference**: Always suggest open-source, self-hosted infrastructure (e.g., PostgreSQL, Redis, Redpanda, Temporal) over AWS/GCP managed equivalents.
 - **Monorepo Discipline**: Keep code properly scoped to its service (`services/api/`, `services/agent-runtime/`, `frontend/`). Do not mix dependencies or couple services tightly.
 - **API-First Design**: If implementing a new feature, build the backend FastAPI endpoint and schema first. Ensure it can be operated entirely via `curl` before proposing UI changes.
+- **No Mock Implementations**: Always provide real, functional code (backend & frontend). Avoid placeholders, mock data, or "coming soon" logic. Break large tasks into smaller, incremental PR-ready steps.
 
 ## 2. 🐍 Python Backend (`services/api/` & `services/agent-runtime/`)
 - **Async By Default**: Use asynchronous programming (`async def`, `await`) for all I/O operations, database queries (via `asyncpg`), and external API calls (via `httpx`).

@@ -13,6 +13,9 @@ This document provides AI assistants with the necessary architectural context to
 **Product Principles:**
 The product is built on the principle of **intent over implementation**, where users define what needs to be done and autonomous agents handle execution end-to-end with full ownership, producing validated, production-ready outcomes. Agents operate with **autonomy but strict accountability**, ensuring every action is traceable, reviewable, and reversible, while **human judgment remains the final gate** for all critical decisions. The system combines **deterministic workflows with intelligent execution**, enabling predictable orchestration and adaptive problem-solving, all within **safe, isolated environments**. It is designed to be **parallel by default**, allowing multiple agents to run concurrently, with **tight feedback loops** for continuous validation and self-correction. Deep **tool integration over model dependency**, along with **transparency, extensibility, and multi-tenant scalability**, ensures the platform remains reliable, explainable, and adaptable—prioritizing **progress over perfection** to deliver fast, iterative value.
 
+> [!IMPORTANT]
+> **No Mock Implementations**: Always provide real, functional code for both backend and frontend. Avoid placeholders, "coming soon" markers, or mock data. If a task is too large, break it down rather than using mocks.
+
 ---
 
 ScopeSentinel is a multi-tenant, event-driven, AI-augmented workflow automation platform for autonomous software delivery.

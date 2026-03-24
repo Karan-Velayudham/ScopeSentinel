@@ -25,6 +25,7 @@ def _conn_to_response(conn: OAuthConnection) -> OAuthConnectionResponse:
         provider=conn.provider,
         expires_at=conn.expires_at,
         scopes=conn.scopes,
+        provider_metadata=conn.provider_metadata,
         created_at=conn.created_at,
         updated_at=conn.updated_at,
     )
@@ -60,6 +61,7 @@ async def upsert_connection(
         existing.refresh_token_encrypted = enc_refresh
         existing.expires_at = body.expires_at
         existing.scopes = body.scopes
+        existing.provider_metadata = body.provider_metadata
         existing.updated_at = datetime.now(timezone.utc)
         session.add(existing)
         await session.commit()
@@ -100,7 +102,8 @@ async def get_connection_token(
         "access_token": decrypt_token(conn.access_token_encrypted),
         "refresh_token": decrypt_token(conn.refresh_token_encrypted),
         "expires_at": conn.expires_at,
-        "scopes": conn.scopes
+        "scopes": conn.scopes,
+        "provider_metadata": conn.provider_metadata
     }
 
 @router.delete("/{provider}", status_code=status.HTTP_204_NO_CONTENT)
@@ -145,6 +148,7 @@ async def internal_save_connection(
         existing.refresh_token_encrypted = enc_refresh
         existing.expires_at = body.expires_at
         existing.scopes = body.scopes
+        existing.provider_metadata = body.provider_metadata
         existing.updated_at = datetime.now(timezone.utc)
         session.add(existing)
         await session.commit()
@@ -157,6 +161,7 @@ async def internal_save_connection(
             refresh_token_encrypted=enc_refresh,
             expires_at=body.expires_at,
             scopes=body.scopes,
+            provider_metadata=body.provider_metadata,
         )
         session.add(new_conn)
         await session.commit()
@@ -182,7 +187,8 @@ async def internal_get_connection_token(
         "access_token": decrypt_token(conn.access_token_encrypted),
         "refresh_token": decrypt_token(conn.refresh_token_encrypted),
         "expires_at": conn.expires_at,
-        "scopes": conn.scopes
+        "scopes": conn.scopes,
+        "provider_metadata": conn.provider_metadata
     }
 
 

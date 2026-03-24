@@ -25,6 +25,8 @@ class ToolRouter:
                     raise HTTPException(status_code=400, detail="Could not fetch tool capabilities, please reconnect")
                 token_data = res.json()
                 access_token = token_data["access_token"]
+                import json
+                provider_metadata = json.loads(token_data.get("provider_metadata", "{}"))
             
             # Find adapter and execute
             from routers.oauth import adapters_map
@@ -32,7 +34,7 @@ class ToolRouter:
             if not adapter:
                 raise HTTPException(status_code=400, detail="Adapter not found")
                 
-            result = await adapter.execute_tool(tool_name, arguments, access_token)
+            result = await adapter.execute_tool(tool_name, arguments, access_token, provider_metadata)
             
             # Send audit event
             import asyncio

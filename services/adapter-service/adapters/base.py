@@ -51,7 +51,7 @@ class BaseOAuthAdapter(ABC):
         pass
 
     @abstractmethod
-    async def execute_tool(self, tool_name: str, arguments: dict, access_token: str) -> Any:
+    async def execute_tool(self, tool_name: str, arguments: dict, access_token: str, provider_metadata: dict) -> Any:
         """
         Executes a normalized capability using the provider's API.
         """

@@ -270,6 +270,7 @@ class OAuthConnection(SQLModel, table=True):
     refresh_token_encrypted: str
     expires_at: datetime = Field(sa_type=DateTime(timezone=True))
     scopes: str = Field(default="[]", description="JSON-encoded list of scopes")
+    provider_metadata: str = Field(default="{}", description="JSON-encoded provider-specific metadata (e.g., cloud_id)")
     created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
     updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 

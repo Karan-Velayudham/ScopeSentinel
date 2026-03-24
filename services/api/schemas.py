@@ -245,7 +245,8 @@ class OAuthConnectionCreate(BaseModel):
     access_token: str
     refresh_token: str
     expires_at: datetime
-    scopes: str
+    scopes: str = "[]"
+    provider_metadata: str = "{}"
 
 class OAuthConnectionResponse(BaseModel):
     id: str
@@ -254,6 +255,7 @@ class OAuthConnectionResponse(BaseModel):
     provider: str
     expires_at: datetime
     scopes: str
+    provider_metadata: str
     created_at: datetime
     updated_at: datetime
 
