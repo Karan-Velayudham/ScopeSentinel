@@ -5,12 +5,14 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const AUDIT_API_BASE = process.env.NEXT_PUBLIC_AUDIT_URL || 'http://localhost:8003'
 const METERING_API_BASE = process.env.NEXT_PUBLIC_METERING_URL || 'http://localhost:8004'
+const ADAPTER_SERVICE_BASE = process.env.NEXT_PUBLIC_ADAPTER_URL || 'http://localhost:8002'
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'dev-admin-api-key-1'
 
 function getBaseUrlForPath(path: string): string {
     if (path.startsWith('/audit')) return AUDIT_API_BASE;
     if (path.startsWith('/metering')) return METERING_API_BASE;
+    if (path.startsWith('/api/connections/oauth')) return ADAPTER_SERVICE_BASE;
     return API_BASE;
 }
 

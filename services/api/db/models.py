@@ -83,6 +83,7 @@ class Org(SQLModel, table=True):
     workflows: list["Workflow"] = Relationship(back_populates="org")
     agents: list["Agent"] = Relationship(back_populates="org")
     installed_connectors: list["InstalledConnector"] = Relationship(back_populates="org")
+    oauth_connections: list["OAuthConnection"] = Relationship(back_populates="org")
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +148,7 @@ class User(SQLModel, table=True):
     # Relationships
     org: Optional[Org] = Relationship(back_populates="users")
     hitl_decisions: list["HitlEvent"] = Relationship(back_populates="decided_by_user")
+    oauth_connections: list["OAuthConnection"] = Relationship(back_populates="user")
 
     @staticmethod
     def hash_api_key(raw_key: str) -> str:
@@ -251,3 +253,26 @@ class InstalledConnector(SQLModel, table=True):
 
     # Relationship
     org: Optional[Org] = Relationship(back_populates="installed_connectors")
+
+
+# ---------------------------------------------------------------------------
+# OAuth Connection
+# ---------------------------------------------------------------------------
+
+class OAuthConnection(SQLModel, table=True):
+    __tablename__ = "oauth_connections"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    provider: str = Field(index=True)
+    access_token_encrypted: str
+    refresh_token_encrypted: str
+    expires_at: datetime = Field(sa_type=DateTime(timezone=True))
+    scopes: str = Field(default="[]", description="JSON-encoded list of scopes")
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+
+    # Relationships
+    org: Optional[Org] = Relationship(back_populates="oauth_connections")
+    user: Optional[User] = Relationship(back_populates="oauth_connections")

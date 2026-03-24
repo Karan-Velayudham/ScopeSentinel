@@ -6,9 +6,9 @@ from core.router import tool_router
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 @router.get("", response_model=Dict[str, List[ToolSchema]])
-async def list_tools():
-    """Returns a list of all discovered tools from all connected MCP Servers."""
-    tools = tool_registry.get_all_tools()
+async def list_tools(org_id: str = None):
+    """Returns a list of all discovered tools from all connected MCP Servers, filtered by org_id."""
+    tools = tool_registry.get_all_tools(org_id)
     return {"tools": tools}
 
 @router.post("/{server_name}/{tool_name}/execute")

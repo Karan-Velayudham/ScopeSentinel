@@ -97,7 +97,7 @@ MAX_REVISIONS = 3
 # Core workflows
 # ---------------------------------------------------------------------------
 
-async def run_planner_workflow(ticket_id: str, *, dry_run: bool = False) -> None:
+async def run_planner_workflow(ticket_id: str, *, dry_run: bool = False, org_id: str = None) -> None:
     """Full workflow: fetch Jira ticket → generate plan → HITL gate → (code + PR)."""
     run_id = str(uuid.uuid4())
     structlog.contextvars.bind_contextvars(run_id=run_id, ticket_id=ticket_id)
@@ -113,7 +113,7 @@ async def run_planner_workflow(ticket_id: str, *, dry_run: bool = False) -> None
         # Step 1: Start dynamic MCP client pool
         log.info("remote_registry.loading")
         try:
-            tool_registry = await build_remote_tool_registry()
+            tool_registry = await build_remote_tool_registry(org_id)
         except Exception as exc:
             raise MCPConnectionError(f"Failed to load remote tools: {exc}") from exc
 
@@ -269,6 +269,7 @@ async def run_healthcheck() -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ScopeSentinel Orchestrator")
     parser.add_argument("--ticket", help="Jira ticket ID to plan (e.g. SCRUM-6)", default=None)
+    parser.add_argument("--org-id", help="Tenant organization ID", default=os.environ.get("ORG_ID"))
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -277,6 +278,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.ticket:
-        asyncio.run(run_planner_workflow(args.ticket, dry_run=args.dry_run))
+        asyncio.run(run_planner_workflow(args.ticket, dry_run=args.dry_run, org_id=args.org_id))
     else:
         asyncio.run(run_healthcheck())

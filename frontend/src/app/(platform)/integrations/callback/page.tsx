@@ -15,7 +15,7 @@ function OAuthCallbackContent() {
             // Notify opener via localStorage
             localStorage.setItem(`oauth_connected_${connector_id}`, Date.now().toString());
             // Auto-redirect after brief success display
-            const timer = setTimeout(() => router.push('/workflows'), 2500);
+            const timer = setTimeout(() => router.push('/integrations'), 2500);
             return () => clearTimeout(timer);
         }
     }, [status, connector_id, router]);
@@ -46,7 +46,7 @@ function OAuthCallbackContent() {
                     onClick={() => router.push('/workflows')}
                     className="text-sm bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90"
                 >
-                    Back to Workflows
+                    Back to Integrations
                 </button>
             )}
         </div>

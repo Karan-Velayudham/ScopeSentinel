@@ -239,6 +239,24 @@ class OAuthInitResponse(BaseModel):
     authorization_url: str
     state: str
     connector_id: str
+
+class OAuthConnectionCreate(BaseModel):
+    provider: str
+    access_token: str
+    refresh_token: str
+    expires_at: datetime
+    scopes: str
+
+class OAuthConnectionResponse(BaseModel):
+    id: str
+    org_id: str
+    user_id: str
+    provider: str
+    expires_at: datetime
+    scopes: str
+    created_at: datetime
+    updated_at: datetime
+
 class DashboardStatsResponse(BaseModel):
     active_runs: int
     workflows_executed: int

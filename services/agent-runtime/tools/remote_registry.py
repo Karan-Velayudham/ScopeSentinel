@@ -23,7 +23,7 @@ def _make_tool_callable(server_name: str, tool_name: str, schema: dict) -> Calla
     _execute_tool.__doc__ = schema.get("description", "")
     return _execute_tool
 
-async def build_remote_tool_registry() -> Dict[str, Callable[..., Any]]:
+async def build_remote_tool_registry(org_id: str = None) -> Dict[str, Callable[..., Any]]:
     """
     Fetches all available tools from the generic Adapter Service 
     and returns a flat dictionary of tool_name -> Callable.
@@ -31,8 +31,11 @@ async def build_remote_tool_registry() -> Dict[str, Callable[..., Any]]:
     registry: Dict[str, Callable[..., Any]] = {}
     try:
         url = f"{ADAPTER_SERVICE_URL}/api/tools"
+        params = {}
+        if org_id:
+            params["org_id"] = org_id
         async with httpx.AsyncClient() as client:
-            resp = await client.get(url, timeout=10.0)
+            resp = await client.get(url, params=params, timeout=10.0)
             resp.raise_for_status()
             data = resp.json()
             tools_list = data.get("tools", [])

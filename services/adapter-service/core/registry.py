@@ -39,9 +39,12 @@ class ToolRegistry:
         
         logger.info("registry.tools_registered_for_server", server=server_name, count=len(tools))
 
-    def get_all_tools(self) -> List[ToolSchema]:
+    def get_all_tools(self, org_id: Optional[str] = None) -> List[ToolSchema]:
         all_tools = []
-        for server_tools in self._tools.values():
+        for server_name, server_tools in self._tools.items():
+            if server_name.startswith("oauth_"):
+                if org_id and not server_name.endswith(f"_{org_id}"):
+                    continue
             all_tools.extend(server_tools.values())
         return all_tools
 

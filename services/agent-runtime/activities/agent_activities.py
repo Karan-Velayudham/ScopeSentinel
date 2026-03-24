@@ -51,8 +51,10 @@ async def fetch_ticket_activity(ticket_id: str) -> str:
     run_id = _get_run_id()
     await sync_run_progress(run_id, status="RUNNING")
     await _save_io("fetch_ticket", {"ticket_id": ticket_id}, True)
+    from db_sync import get_run_org_id
+    org_id = await get_run_org_id(run_id)
     
-    tool_registry = await build_remote_tool_registry()
+    tool_registry = await build_remote_tool_registry(org_id)
     try:
         fetch_func = tool_registry["fetch_jira_ticket"]
         res = await fetch_func(ticket_id=ticket_id)
@@ -77,8 +79,12 @@ async def planning_activity(args: dict) -> dict:
     model_name = args.get("model_name", "gpt-4o")
     agentscope.init(project="ScopeSentinel", name="PlannerRun")
     model = _build_model(model_name)
-    
-    tool_registry = await build_remote_tool_registry()
+    org_id = args.get("org_id")
+    if not org_id:
+        from db_sync import get_run_org_id
+        org_id = await get_run_org_id(run_id)
+        
+    tool_registry = await build_remote_tool_registry(org_id)
     try:
         agent_id = args.get("agent_id")
         custom_prompt = None
@@ -128,8 +134,12 @@ async def coder_activity(args: dict) -> dict:
     
     agentscope.init(project="ScopeSentinel", name="CoderRun")
     model = _build_model(model_name)
-    
-    tool_registry = await build_remote_tool_registry()
+    org_id = args.get("org_id")
+    if not org_id:
+        from db_sync import get_run_org_id
+        org_id = await get_run_org_id(run_id)
+        
+    tool_registry = await build_remote_tool_registry(org_id)
     try:
         reconstructed_plan = PlannerOutput(
             ticket_id=ticket_id,
@@ -239,5 +249,7 @@ async def analyzer_activity(args: dict) -> dict:
         )
         await _save_io("analyzer", result, False)
         return result
+    # Analyzer doesn't currently call tool_registry in the snippet, but preparing just in case
+    # If the Analyzer agent accesses tools in the future, it needs this
     finally:
         pass

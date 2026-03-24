@@ -85,3 +85,17 @@ async def get_agent(agent_id: str) -> dict:
     except Exception as e:
         logger.error("db.get_agent_failed", error=str(e), agent_id=agent_id)
         return {}
+
+async def get_run_org_id(run_id: str) -> str:
+    """Fetch the org_id for a given workflow run."""
+    try:
+        async with engine.connect() as conn:
+            sql = "SELECT org_id FROM workflow_runs WHERE id = :id"
+            result = await conn.execute(text(sql), {"id": run_id})
+            row = result.fetchone()
+            if row:
+                return row[0]
+            return None
+    except Exception as e:
+        logger.error("db.get_run_org_id_failed", error=str(e), run_id=run_id)
+        return None

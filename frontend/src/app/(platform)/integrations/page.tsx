@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { apiFetch } from "@/lib/api-client"
+import { CapabilitiesDialog } from "./capabilities-dialog"
 
 const getIconForCategory = (category: string) => {
     switch (category) {
@@ -20,16 +21,24 @@ const getIconForCategory = (category: string) => {
 export default function IntegrationsPage() {
     const [available, setAvailable] = useState<any[]>([])
     const [installed, setInstalled] = useState<any[]>([])
+    const [oauthConnections, setOauthConnections] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
+
+    const [isCapModalOpen, setIsCapModalOpen] = useState(false)
+    const [selectedConnector, setSelectedConnector] = useState<any>(null)
+    const [capabilities, setCapabilities] = useState<any[]>([])
+    const [capsLoading, setCapsLoading] = useState(false)
 
     const fetchData = async () => {
         try {
-            const [resAvail, resInst] = await Promise.all([
+            const [resAvail, resInst, resOauth] = await Promise.all([
                 apiFetch('/api/connectors/available'),
                 apiFetch('/api/connectors/installed'),
+                apiFetch('/api/oauth-connections'),
             ])
             setAvailable(await resAvail.json())
             setInstalled(await resInst.json())
+            setOauthConnections(await resOauth.json())
         } catch (e) {
             console.error("Failed to fetch connectors", e)
         } finally {
@@ -38,8 +47,25 @@ export default function IntegrationsPage() {
     }
 
     useEffect(() => { fetchData() }, [])
+    useEffect(() => {
+        // Poll for oauth changes or check localStorage
+        const handleOauthUpdate = () => fetchData();
+        window.addEventListener('storage', (e) => {
+            if (e.key?.startsWith('oauth_connected_')) fetchData();
+        });
+    }, [])
 
-    const handleConnect = async (connectorId: string) => {
+    const handleConnect = async (connector: any) => {
+        const connectorId = connector.id;
+        if (connector.auth_type === 'oauth') {
+            // Need org_id and user_id. For now, assume we can get from auth context or hardcode for dev.
+            // In a real app, use the current user's session.
+            const org_id = "org_123";
+            const user_id = "user_456";
+            const authUrl = `http://localhost:8002/api/connections/oauth/${connectorId}/authorize?org_id=${org_id}&user_id=${user_id}`;
+            window.location.href = authUrl;
+            return;
+        }
         try {
             const res = await apiFetch(`/api/connectors/${connectorId}/install`, {
                 method: 'POST',
@@ -58,16 +84,38 @@ export default function IntegrationsPage() {
 
     // m-3 fix: Add disconnect/uninstall handler
     const handleDisconnect = async (connectorId: string) => {
-        if (!confirm(`Remove ${connectorId} connector?`)) return
+        if (!confirm(`Remove ${connectorId} connection?`)) return
         try {
+            // If it's jira/oauth, we should also delete from oauth-connections
+            await apiFetch(`/api/oauth-connections/${connectorId}`, { method: 'DELETE' })
             const res = await apiFetch(`/api/connectors/${connectorId}/uninstall`, { method: 'DELETE' })
             if (res.ok || res.status === 204) {
                 fetchData()
             } else {
-                alert("Failed to uninstall connector.")
+                // If it's oauth only, we might not have a "connector" record
+                fetchData()
             }
         } catch (e) {
             alert("Error removing connector")
+        }
+    }
+
+    const handleViewCapabilities = async (connector: any) => {
+        setSelectedConnector(connector)
+        setIsCapModalOpen(true)
+        setCapsLoading(true)
+        try {
+            // Currently adapter-service /api/tools returns all tools.
+            // We'll filter for this connector's tools.
+            const res = await apiFetch(`/api/tools?org_id=org_123`) // org_123 used for dev
+            const data = await res.json()
+            const tools = data.tools || []
+            const connectorTools = tools.filter((t: any) => t.server_name.includes(connector.id))
+            setCapabilities(connectorTools)
+        } catch (e) {
+            console.error("Failed to fetch capabilities", e)
+        } finally {
+            setCapsLoading(false)
         }
     }
 
@@ -88,7 +136,8 @@ export default function IntegrationsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {available.map((connector) => {
                     const instEntry = installed.find((i: any) => i.connector_id === connector.id)
-                    const isConnected = !!instEntry
+                    const oauthEntry = oauthConnections.find((oc: any) => oc.provider === connector.id)
+                    const isConnected = !!instEntry || !!oauthEntry
                     const Icon = getIconForCategory(connector.category)
 
                     return (
@@ -100,7 +149,7 @@ export default function IntegrationsPage() {
                                     </div>
                                     {isConnected && (
                                         <Badge variant="default" className="bg-green-500/10 text-green-600 dark:text-green-400">
-                                            Installed
+                                            {instEntry?.connector_id ? "Installed" : "Connected"}
                                         </Badge>
                                     )}
                                 </div>
@@ -132,8 +181,18 @@ export default function IntegrationsPage() {
                                         </Button>
                                     </>
                                 ) : (
-                                    <Button className="w-full" onClick={() => handleConnect(connector.id)}>
+                                    <Button className="w-full" onClick={() => handleConnect(connector)}>
                                         Install Connector
+                                    </Button>
+                                )}
+                                {oauthConnections.find((oc: any) => oc.provider === connector.id) && (
+                                    <Button
+                                        variant="secondary"
+                                        className="w-full mt-2"
+                                        size="sm"
+                                        onClick={() => handleViewCapabilities(connector)}
+                                    >
+                                        View Capabilities
                                     </Button>
                                 )}
                             </CardFooter>
@@ -141,6 +200,13 @@ export default function IntegrationsPage() {
                     )
                 })}
             </div>
+
+            <CapabilitiesDialog
+                isOpen={isCapModalOpen}
+                onClose={() => setIsCapModalOpen(false)}
+                connectorName={selectedConnector?.name || ""}
+                capabilities={capabilities}
+            />
         </div>
     )
 }
