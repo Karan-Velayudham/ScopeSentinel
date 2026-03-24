@@ -2,6 +2,16 @@
 
 When executing tasks, writing code, or generating implementation plans for **ScopeSentinel**, you MUST strictly adhere to the following rules:
 
+## 🌟 0. Vision & Product Principles
+**Vision:** We envision a world where engineering teams operate as orchestrators of intelligent systems, seamlessly delegating work to autonomous agents that continuously build, test, and improve software.
+
+**Key Principles:**
+- **Intent over Implementation**: Focus on end-to-end autonomous execution with full ownership.
+- **Autonomy with Accountability**: Every action must be traceable, reviewable, and reversible.
+- **Human in the Loop**: Human judgment remains the final gate for critical decisions.
+- **Parallel by Default**: Design for concurrent agent execution and tight feedback loops.
+- **Tool Integration > Model Dependency**: Prioritize solid, deterministic integrations alongside AI adaptability.
+
 ## 1. 🏗️ Architectural Constraints
 - **Self-Hosted Preference**: Always suggest open-source, self-hosted infrastructure (e.g., PostgreSQL, Redis, Redpanda, Temporal) over AWS/GCP managed equivalents unless explicitly instructed otherwise.
 - **Monorepo Discipline**: Keep code properly scoped to its service (`services/api/`, `services/agent-runtime/`, `frontend/`). Do not mix dependencies or couple services tightly.
