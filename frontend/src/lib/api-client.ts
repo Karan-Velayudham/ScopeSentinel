@@ -12,7 +12,7 @@ const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'dev-admin-api-key-1'
 function getBaseUrlForPath(path: string): string {
     if (path.startsWith('/audit')) return AUDIT_API_BASE;
     if (path.startsWith('/metering')) return METERING_API_BASE;
-    if (path.startsWith('/api/connections/oauth')) return ADAPTER_SERVICE_BASE;
+    if (path.startsWith('/api/connections/oauth') || path.startsWith('/api/tools')) return ADAPTER_SERVICE_BASE;
     return API_BASE;
 }
 

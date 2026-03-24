@@ -60,8 +60,8 @@ export default function IntegrationsPage() {
         if (connector.auth_type === 'oauth') {
             // Need org_id and user_id. For now, assume we can get from auth context or hardcode for dev.
             // In a real app, use the current user's session.
-            const org_id = "org_123";
-            const user_id = "user_456";
+            const org_id = "org_123"; // dev-default
+            const user_id = "user_456"; // dev-default
             const authUrl = `http://localhost:8002/api/connections/oauth/${connectorId}/authorize?org_id=${org_id}&user_id=${user_id}`;
             window.location.href = authUrl;
             return;
@@ -107,10 +107,14 @@ export default function IntegrationsPage() {
         try {
             // Currently adapter-service /api/tools returns all tools.
             // We'll filter for this connector's tools.
-            const res = await apiFetch(`/api/tools?org_id=org_123`) // org_123 used for dev
+            const res = await apiFetch(`/api/tools?org_id=org_123`) 
             const data = await res.json()
             const tools = data.tools || []
-            const connectorTools = tools.filter((t: any) => t.server_name.includes(connector.id))
+            // The adapter-service registers tools with server_name 'oauth_{provider}_{org_id}'
+            const connectorTools = tools.filter((t: any) => 
+                t.server_name === `oauth_${connector.id}_org_123` || 
+                t.server_name.includes(connector.id)
+            )
             setCapabilities(connectorTools)
         } catch (e) {
             console.error("Failed to fetch capabilities", e)
