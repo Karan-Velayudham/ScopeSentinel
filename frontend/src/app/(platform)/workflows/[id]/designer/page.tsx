@@ -7,11 +7,10 @@ import { workflowGraphToYaml, yamlToWorkflowGraph } from '@/lib/workflow-parser'
 import { Node, Edge } from '@xyflow/react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { apiFetch } from '@/lib/api-client';
-import { useSession } from 'next-auth/react';
+import { useApi } from '@/hooks/use-api';
 
 export default function WorkflowDesignerPage() {
-    const { data: session } = useSession();
+    const api = useApi();
     const params = useParams();
     const id = params.id as string;
     const router = useRouter();
@@ -24,8 +23,7 @@ export default function WorkflowDesignerPage() {
     const [workflowStatus, setWorkflowStatus] = useState('draft');
 
     useEffect(() => {
-        const orgId = session?.user?.org_id;
-        if (!orgId && id !== 'new') return;
+        if (!api.orgId && id !== 'new') return;
 
         if (id === 'new') {
             const { nodes, edges } = yamlToWorkflowGraph('');
@@ -35,9 +33,7 @@ export default function WorkflowDesignerPage() {
             return;
         }
 
-        apiFetch(`/api/workflows/${id}`, {
-            headers: { 'X-ScopeSentinel-Org-ID': orgId! }
-        })
+        api.fetch(`/api/workflows/${id}`)
             .then(res => {
                 if (!res.ok) throw new Error("Failed to fetch workflow");
                 return res.json();
@@ -55,11 +51,10 @@ export default function WorkflowDesignerPage() {
                 console.error(err);
                 setLoading(false);
             });
-    }, [id, session]);
+    }, [id, api.orgId]);
 
     const handleSave = async (nodes: Node[], edges: Edge[], name: string) => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) {
+        if (!api.orgId) {
             alert("No organization context found.");
             return;
         }
@@ -73,9 +68,8 @@ export default function WorkflowDesignerPage() {
             : { yaml_content: yamlContent, name };
 
         try {
-            const res = await apiFetch(url, {
+            const res = await api.fetch(url, {
                 method,
-                headers: { 'X-ScopeSentinel-Org-ID': orgId },
                 body: JSON.stringify(payload),
             });
 

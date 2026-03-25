@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { X, Plus, Trash2, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
-import { apiFetch } from "@/lib/api-client";
-import { useSession } from "next-auth/react";
+import { useApi } from "@/hooks/use-api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,16 +81,14 @@ function McpToolChecklist({ selectedTools, onChange }: {
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(true);
 
-    const { data: session } = useSession();
+    const api = useApi();
     useEffect(() => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) return;
+        if (!api.orgId) return;
 
-        apiFetch('/api/connectors/installed', { headers: { 'X-ScopeSentinel-Org-ID': orgId } })
-            .then(r => r.json())
-            .then(data => { setConnectors(data); setLoading(false); })
+        api.get<InstalledConnector[]>('/api/connectors/installed')
+            .then(data => { setConnectors(data || []); setLoading(false); })
             .catch(() => setLoading(false));
-    }, [session]);
+    }, [api.orgId]);
 
     const toggle = (toolKey: string) => {
         onChange(
@@ -147,17 +144,15 @@ function McpToolChecklist({ selectedTools, onChange }: {
 // ─── Agent selector ───────────────────────────────────────────────────────────
 
 function AgentSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-    const { data: session } = useSession();
+    const api = useApi();
     const [agents, setAgents] = useState<any[]>([]);
     useEffect(() => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) return;
+        if (!api.orgId) return;
 
-        apiFetch('/api/agents', { headers: { 'X-ScopeSentinel-Org-ID': orgId } })
-            .then(r => r.json())
+        api.get<{ items: any[] }>('/api/agents')
             .then(d => setAgents(d.items || []))
             .catch(() => { });
-    }, [session]);
+    }, [api.orgId]);
     return (
         <SelectInput
             value={value || 'none'}

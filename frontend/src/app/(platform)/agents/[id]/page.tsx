@@ -6,11 +6,10 @@ import { Bot, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { AgentForm } from "@/components/agents/AgentForm"
-import { apiFetch } from "@/lib/api-client"
-import { useSession } from "next-auth/react"
+import { useApi } from "@/hooks/use-api"
 
 export default function EditAgentPage() {
-    const { data: session } = useSession()
+    const api = useApi()
     const params = useParams()
     const id = params.id as string
     const [agent, setAgent] = useState<any>(null)
@@ -18,13 +17,10 @@ export default function EditAgentPage() {
 
     useEffect(() => {
         const fetchAgent = async () => {
-            const orgId = session?.user?.org_id
-            if (!orgId) return
+            if (!api.orgId) return
 
             try {
-                const res = await apiFetch(`/api/agents/${id}`, {
-                    headers: { 'X-ScopeSentinel-Org-ID': orgId }
-                })
+                const res = await api.fetch(`/api/agents/${id}`)
                 if (res.ok) {
                     setAgent(await res.json())
                 }
@@ -34,10 +30,8 @@ export default function EditAgentPage() {
                 setLoading(false)
             }
         }
-        if (session?.user?.org_id) {
-            fetchAgent()
-        }
-    }, [id, session])
+        fetchAgent()
+    }, [id, api.orgId])
 
     if (loading) return <div className="p-8">Loading Agent...</div>
     if (!agent) return <div className="p-8 text-destructive">Agent not found.</div>

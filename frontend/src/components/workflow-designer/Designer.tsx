@@ -29,8 +29,7 @@ import { ConditionNode } from './nodes/ConditionNode';
 import { InputNode } from './nodes/InputNode';
 import { OutputNode } from './nodes/OutputNode';
 import { OAuthConnectModal } from './OAuthConnectModal';
-import { apiFetch } from "@/lib/api-client";
-import { useSession } from "next-auth/react";
+import { useApi } from "@/hooks/use-api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,7 +63,7 @@ export function DesignerComponent({
     initialStatus?: string;
     onSave: (nodes: Node[], edges: Edge[], name: string) => void;
 }) {
-    const { data: session } = useSession();
+    const api = useApi();
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -140,15 +139,13 @@ export function DesignerComponent({
 
     // ── Activate / Deactivate ─────────────────────────────────────────────────
     const handleActivate = async () => {
-        const orgId = session?.user?.org_id;
-        if (!orgId || !workflowId) return;
+        if (!api.orgId || !workflowId) return;
 
         setActivating(true);
         try {
             const action = status === 'active' ? 'deactivate' : 'activate';
-            const res = await apiFetch(`/api/workflows/${workflowId}/${action}`, { 
-                method: 'POST',
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            const res = await api.fetch(`/api/workflows/${workflowId}/${action}`, { 
+                method: 'POST'
             });
             if (res.ok) {
                 const data = await res.json();
@@ -180,17 +177,15 @@ export function DesignerComponent({
     };
 
     const handleExecuteRun = async (inputs: Record<string, string>) => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) {
+        if (!api.orgId) {
             alert("No organization context found.");
             return;
         }
 
         setRunning(true);
         try {
-            const res = await apiFetch('/api/runs/', {
+            const res = await api.fetch('/api/runs/', {
                 method: 'POST',
-                headers: { 'X-ScopeSentinel-Org-ID': orgId },
                 body: JSON.stringify({
                     workflow_id: workflowId,
                     inputs,

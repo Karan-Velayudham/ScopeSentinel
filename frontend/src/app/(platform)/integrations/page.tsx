@@ -5,8 +5,7 @@ import { Database, Github, Key, Link as LinkIcon, Monitor, Slack } from "lucide-
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { apiFetch } from "@/lib/api-client"
-import { useSession } from "next-auth/react"
+import { useApi } from "@/hooks/use-api"
 import { CapabilitiesDialog } from "./capabilities-dialog"
 
 const getIconForCategory = (category: string) => {
@@ -20,7 +19,7 @@ const getIconForCategory = (category: string) => {
 }
 
 export default function IntegrationsPage() {
-    const { data: session } = useSession()
+    const api = useApi()
     const [available, setAvailable] = useState<any[]>([])
     const [installed, setInstalled] = useState<any[]>([])
     const [oauthConnections, setOauthConnections] = useState<any[]>([])
@@ -32,18 +31,17 @@ export default function IntegrationsPage() {
     const [capsLoading, setCapsLoading] = useState(false)
 
     const fetchData = async () => {
-        const orgId = session?.user?.org_id
-        if (!orgId) return
+        if (!api.orgId) return
 
         try {
-            const [resAvail, resInst, resOauth] = await Promise.all([
-                apiFetch('/api/connectors/available', { headers: { 'X-ScopeSentinel-Org-ID': orgId } }),
-                apiFetch('/api/connectors/installed', { headers: { 'X-ScopeSentinel-Org-ID': orgId } }),
-                apiFetch('/api/oauth-connections', { headers: { 'X-ScopeSentinel-Org-ID': orgId } }),
+            const [dataAvail, dataInst, dataOauth] = await Promise.all([
+                api.get<any[]>('/api/connectors/available'),
+                api.get<any[]>('/api/connectors/installed'),
+                api.get<any[]>('/api/oauth-connections'),
             ])
-            setAvailable(await resAvail.json())
-            setInstalled(await resInst.json())
-            setOauthConnections(await resOauth.json())
+            setAvailable(dataAvail || [])
+            setInstalled(dataInst || [])
+            setOauthConnections(dataOauth || [])
         } catch (e) {
             console.error("Failed to fetch connectors", e)
         } finally {
@@ -52,10 +50,8 @@ export default function IntegrationsPage() {
     }
 
     useEffect(() => { 
-        if (session?.user?.org_id) {
-            fetchData() 
-        }
-    }, [session])
+        fetchData() 
+    }, [api.orgId])
     useEffect(() => {
         // Poll for oauth changes or check localStorage
         const handleOauthUpdate = () => fetchData();
@@ -66,19 +62,17 @@ export default function IntegrationsPage() {
 
     const handleConnect = async (connector: any) => {
         const connectorId = connector.id;
-        const orgId = session?.user?.org_id;
-        if (!orgId) return;
+        if (!api.orgId) return;
 
         if (connector.auth_type === 'oauth') {
-            const user_id = session?.user?.email || "unknown";
-            const authUrl = `http://localhost:8005/api/connections/oauth/${connectorId}/authorize?org_id=${orgId}&user_id=${user_id}`;
+            const user_id = api.session?.user?.email || "unknown";
+            const authUrl = `http://localhost:8005/api/connections/oauth/${connectorId}/authorize?org_id=${api.orgId}&user_id=${user_id}`;
             window.location.href = authUrl;
             return;
         }
         try {
-            const res = await apiFetch(`/api/connectors/${connectorId}/install`, {
+            const res = await api.fetch(`/api/connectors/${connectorId}/install`, {
                 method: 'POST',
-                headers: { 'X-ScopeSentinel-Org-ID': orgId },
                 body: JSON.stringify({ config: { token: "" } }),
             })
             if (res.ok) {
@@ -94,45 +88,30 @@ export default function IntegrationsPage() {
 
     // m-3 fix: Add disconnect/uninstall handler
     const handleDisconnect = async (connectorId: string) => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) return;
+        if (!api.orgId) return;
 
         if (!confirm(`Remove ${connectorId} connection?`)) return
         try {
-            await apiFetch(`/api/oauth-connections/${connectorId}`, { 
-                method: 'DELETE',
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            })
-            const res = await apiFetch(`/api/connectors/${connectorId}/uninstall`, { 
-                method: 'DELETE',
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            })
-            if (res.ok || res.status === 204) {
-                fetchData()
-            } else {
-                // If it's oauth only, we might not have a "connector" record
-                fetchData()
-            }
+            await api.delete(`/api/oauth-connections/${connectorId}`)
+            await api.delete(`/api/connectors/${connectorId}/uninstall`)
+            fetchData()
         } catch (e) {
-            alert("Error removing connector")
+            // If it's oauth only, we might still want to refresh
+            fetchData()
         }
     }
 
     const handleViewCapabilities = async (connector: any) => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) return;
+        if (!api.orgId) return;
 
         setSelectedConnector(connector)
         setIsCapModalOpen(true)
         setCapsLoading(true)
         try {
-            const res = await apiFetch(`/api/tools?org_id=${orgId}`, {
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            }) 
-            const data = await res.json()
+            const data = await api.get<any>(`/api/tools?org_id=${api.orgId}`) 
             const tools = data.tools || []
             const connectorTools = tools.filter((t: any) => 
-                t.server_name === `oauth_${connector.id}_${orgId}` || 
+                t.server_name === `oauth_${connector.id}_${api.orgId}` || 
                 t.server_name.includes(connector.id)
             )
             setCapabilities(connectorTools)

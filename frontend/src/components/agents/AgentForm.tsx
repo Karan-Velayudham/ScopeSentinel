@@ -9,8 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { apiFetch } from "@/lib/api-client"
-import { useSession } from "next-auth/react"
+import { useApi } from "@/hooks/use-api"
 
 interface AgentFormProps {
     initialData?: {
@@ -42,7 +41,7 @@ const COMMON_TOOLS = [
 ]
 
 export function AgentForm({ initialData, isEditing = false }: AgentFormProps) {
-    const { data: session } = useSession()
+    const api = useApi()
     const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [formData, setFormData] = useState({
@@ -55,8 +54,7 @@ export function AgentForm({ initialData, isEditing = false }: AgentFormProps) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        const orgId = session?.user?.org_id
-        if (!orgId) {
+        if (!api.orgId) {
             alert("No organization context found. Please log in again.")
             return
         }
@@ -67,9 +65,8 @@ export function AgentForm({ initialData, isEditing = false }: AgentFormProps) {
         const method = isEditing ? "PUT" : "POST"
 
         try {
-            const res = await apiFetch(url, {
+            const res = await api.fetch(url, {
                 method,
-                headers: { 'X-ScopeSentinel-Org-ID': orgId },
                 body: JSON.stringify(formData)
             })
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api-client";
+import { useApi } from "@/hooks/use-api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ interface User {
 }
 
 export default function TeamSettingsPage() {
+    const api = useApi();
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -45,9 +46,10 @@ export default function TeamSettingsPage() {
     const [inviting, setInviting] = useState(false);
 
     const fetchUsers = async () => {
+        if (!api.orgId) return;
         setLoading(true);
         try {
-            const data = await apiGet<User[]>("/api/users");
+            const data = await api.get<User[]>("/api/users");
             setUsers(data || []);
             setError(null);
         } catch (e: any) {
@@ -58,14 +60,16 @@ export default function TeamSettingsPage() {
     };
 
     useEffect(() => {
-        fetchUsers();
-    }, []);
+        if (api.orgId) {
+            fetchUsers();
+        }
+    }, [api.orgId]);
 
     const handleInvite = async () => {
-        if (!inviteEmail.trim()) return;
+        if (!inviteEmail.trim() || !api.orgId) return;
         setInviting(true);
         try {
-            await apiPost("/api/users/invite", { email: inviteEmail.trim(), role: inviteRole });
+            await api.post("/api/users/invite", { email: inviteEmail.trim(), role: inviteRole });
             setInviteOpen(false);
             setInviteEmail("");
             setInviteRole("developer");
@@ -79,7 +83,7 @@ export default function TeamSettingsPage() {
 
     const handleRoleChange = async (userId: string, newRole: string) => {
         try {
-            await apiPatch(`/api/users/${userId}/role`, { role: newRole });
+            await api.patch(`/api/users/${userId}/role`, { role: newRole });
             setUsers(users.map(u => (u.id === userId ? { ...u, role: newRole } : u)));
         } catch (e: any) {
             alert(`Failed to update role: ${e.message}`);
@@ -89,7 +93,7 @@ export default function TeamSettingsPage() {
     const handleRemoveUser = async (userId: string) => {
         if (!confirm("Are you sure you want to remove this user from the organization?")) return;
         try {
-            await apiDelete(`/api/users/${userId}`);
+            await api.delete(`/api/users/${userId}`);
             setUsers(users.filter(u => u.id !== userId));
         } catch (e: any) {
             alert(`Failed to remove user: ${e.message}`);

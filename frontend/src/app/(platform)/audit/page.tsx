@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiGet } from "@/lib/api-client";
-import { useSession } from "next-auth/react";
+import { useApi } from "@/hooks/use-api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -22,21 +21,18 @@ interface AuditEvent {
 }
 
 export default function AuditLogPage() {
-    const { data: session } = useSession();
+    const api = useApi();
     const [events, setEvents] = useState<AuditEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
     const fetchAuditEvents = async () => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) return;
+        if (!api.orgId) return;
 
         setLoading(true);
         try {
-            const data = await apiGet<AuditEvent[]>("/audit/events?limit=100", {
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            });
+            const data = await api.get<AuditEvent[]>("/audit/events?limit=100");
             setEvents(data || []);
             setError(null);
         } catch (e: any) {
@@ -47,10 +43,10 @@ export default function AuditLogPage() {
     };
 
     useEffect(() => {
-        if (session?.user?.org_id) {
+        if (api.orgId) {
             fetchAuditEvents();
         }
-    }, [session]);
+    }, [api.orgId]);
 
     const filteredEvents = events.filter(e =>
         (e.action && e.action.toLowerCase().includes(searchQuery.toLowerCase())) ||

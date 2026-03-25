@@ -3,21 +3,17 @@
 import { useEffect, useState } from "react"
 import { AlertCircle, ArrowRight } from "lucide-react"
 import Link from "next/link"
-import { apiGet } from "@/lib/api-client"
-import { useSession } from "next-auth/react"
+import { useApi } from "@/hooks/use-api"
 
 export function HitlBanner() {
-    const { data: session } = useSession()
+    const api = useApi()
     const [pendingRunId, setPendingRunId] = useState<string | null>(null);
 
     useEffect(() => {
-        const orgId = session?.user?.org_id
-        if (!orgId) return
+        if (!api.orgId) return
 
         // Fetch runs with status=WAITING_HITL
-        apiGet<any>("/api/runs?status=WAITING_HITL&page_size=1", {
-            headers: { 'X-ScopeSentinel-Org-ID': orgId }
-        })
+        api.get<any>("/api/runs?status=WAITING_HITL&page_size=1")
             .then(data => {
                 if (data.items && data.items.length > 0) {
                     setPendingRunId(data.items[0].run_id);
@@ -28,7 +24,7 @@ export function HitlBanner() {
             .catch(err => {
                 console.error("Failed to fetch pending HITL runs", err);
             });
-    }, [session]);
+    }, [api.orgId]);
 
     if (!pendingRunId) return null
 

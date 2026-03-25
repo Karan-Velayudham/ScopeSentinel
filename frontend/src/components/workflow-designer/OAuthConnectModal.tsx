@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { X, Loader2, Key, ExternalLink } from "lucide-react";
-import { apiFetch } from "@/lib/api-client";
-import { useSession } from "next-auth/react";
+import { useApi } from "@/hooks/use-api";
 
 interface AvailableConnector {
     id: string;
@@ -23,14 +22,13 @@ export function OAuthConnectModal({
     onClose: () => void;
     onConnected: () => void;
 }) {
-    const { data: session } = useSession();
+    const api = useApi();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [apiKeyValues, setApiKeyValues] = useState<Record<string, string>>({});
 
     const handleOAuth = async () => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) {
+        if (!api.orgId) {
             setError('No organization context found.');
             return;
         }
@@ -38,9 +36,8 @@ export function OAuthConnectModal({
         setLoading(true);
         setError('');
         try {
-            const res = await apiFetch(`/api/connectors/${connector.id}/oauth/init`, { 
-                method: 'POST',
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            const res = await api.fetch(`/api/connectors/${connector.id}/oauth/init`, { 
+                method: 'POST'
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || 'OAuth init failed');
@@ -62,8 +59,7 @@ export function OAuthConnectModal({
     };
 
     const handleApiKeyInstall = async () => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) {
+        if (!api.orgId) {
             setError('No organization context found.');
             return;
         }
@@ -71,9 +67,8 @@ export function OAuthConnectModal({
         setLoading(true);
         setError('');
         try {
-            const res = await apiFetch(`/api/connectors/${connector.id}/install`, {
+            const res = await api.fetch(`/api/connectors/${connector.id}/install`, {
                 method: 'POST',
-                headers: { 'X-ScopeSentinel-Org-ID': orgId },
                 body: JSON.stringify({ config: apiKeyValues }),
             });
             const data = await res.json();

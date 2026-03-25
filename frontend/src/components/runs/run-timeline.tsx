@@ -1,24 +1,20 @@
 import { useEffect, useState } from "react"
 import { CheckCircle2, Circle, Clock, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { apiGet } from "@/lib/api-client"
-import { useSession } from "next-auth/react"
+import { useApi } from "@/hooks/use-api"
 import { StepDrawer } from "./step-drawer"
 
 export function RunTimeline({ runId }: { runId: string }) {
-    const { data: session } = useSession()
+    const api = useApi()
     const [steps, setSteps] = useState<any[]>([]);
     const [selectedStep, setSelectedStep] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     const fetchSteps = async () => {
-        const orgId = session?.user?.org_id
-        if (!orgId) return
+        if (!api.orgId) return
 
         try {
-            const data = await apiGet<any>(`/api/runs/${runId}`, {
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            });
+            const data = await api.get<any>(`/api/runs/${runId}`);
             setSteps(data.steps || []);
         } catch (e) {
             console.error("Failed to fetch run steps", e);
@@ -28,12 +24,10 @@ export function RunTimeline({ runId }: { runId: string }) {
     };
 
     useEffect(() => {
-        if (session?.user?.org_id) {
-            fetchSteps();
-            const interval = setInterval(fetchSteps, 5000);
-            return () => clearInterval(interval);
-        }
-    }, [runId, session]);
+        fetchSteps();
+        const interval = setInterval(fetchSteps, 5000);
+        return () => clearInterval(interval);
+    }, [runId, api.orgId, api]);
 
     const StatusIcon = ({ status }: { status: string }) => {
         switch (status) {

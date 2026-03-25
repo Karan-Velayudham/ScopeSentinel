@@ -6,25 +6,20 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { apiFetch } from "@/lib/api-client"
-import { useSession } from "next-auth/react"
+import { useApi } from "@/hooks/use-api"
 import Link from "next/link"
 
 export default function AgentsPage() {
-    const { data: session } = useSession()
+    const api = useApi()
     const [agents, setAgents] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState("")
 
     const fetchAgents = async () => {
-        const orgId = session?.user?.org_id
-        if (!orgId) return
+        if (!api.orgId) return
 
         try {
-            const res = await apiFetch('/api/agents', {
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            })
-            const data = await res.json()
+            const data = await api.get<{ items: any[] }>('/api/agents')
             setAgents(data.items || [])
         } catch (e) {
             console.error("Failed to fetch agents", e)
@@ -34,26 +29,18 @@ export default function AgentsPage() {
     }
 
     useEffect(() => { 
-        if (session?.user?.org_id) {
+        if (api.orgId) {
             fetchAgents() 
         }
-    }, [session])
+    }, [api.orgId])
 
     const handleDelete = async (agentId: string, name: string) => {
-        const orgId = session?.user?.org_id
-        if (!orgId) return
+        if (!api.orgId) return
 
         if (!confirm(`Are you sure you want to delete agent "${name}"?`)) return
         try {
-            const res = await apiFetch(`/api/agents/${agentId}`, { 
-                method: 'DELETE',
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            })
-            if (res.ok || res.status === 204) {
-                setAgents(agents.filter(a => a.id !== agentId))
-            } else {
-                alert("Failed to delete agent.")
-            }
+            await api.delete(`/api/agents/${agentId}`)
+            setAgents(agents.filter(a => a.id !== agentId))
         } catch (e) {
             alert("Error deleting agent")
         }

@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { apiGet, apiPost } from '@/lib/api-client';
-import { useSession } from 'next-auth/react';
+import { useApi } from '@/hooks/use-api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -29,7 +28,7 @@ const statusColor = (status: string) => {
 };
 
 export default function RunsPage() {
-    const { data: session } = useSession();
+    const api = useApi();
     const [runs, setRuns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -40,14 +39,11 @@ export default function RunsPage() {
     const hasPendingVisualRuns = runs.some(r => r.status === 'PENDING' && r.workflow_id && !r.ticket_id);
 
     const fetchRuns = async () => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) return;
+        if (!api.orgId) return;
 
         setLoading(true);
         try {
-            const data = await apiGet<{ items: any[] }>('/api/runs/', {
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            });
+            const data = await api.get<{ items: any[] }>('/api/runs/');
             setRuns(data.items || []);
         } catch (e: any) {
             setError(e.message);
@@ -57,21 +53,18 @@ export default function RunsPage() {
     };
 
     useEffect(() => {
-        if (session?.user?.org_id) {
+        if (api.orgId) {
             fetchRuns();
             const interval = setInterval(fetchRuns, 10000);
             return () => clearInterval(interval);
         }
-    }, [session]);
+    }, [api.orgId]);
 
     const handleTrigger = async () => {
-        const orgId = session?.user?.org_id;
-        if (!ticketId.trim() || !orgId) return;
+        if (!ticketId.trim() || !api.orgId) return;
         setTriggering(true);
         try {
-            await apiPost('/api/runs/', { ticket_id: ticketId.trim(), dry_run: false }, {
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            });
+            await api.post('/api/runs/', { ticket_id: ticketId.trim(), dry_run: false });
             setTriggerOpen(false);
             setTicketId("");
             await fetchRuns();

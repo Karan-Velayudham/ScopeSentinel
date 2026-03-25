@@ -3,48 +3,38 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Trash2 } from 'lucide-react';
-import { apiFetch } from '@/lib/api-client';
-import { useSession } from 'next-auth/react';
+import { useApi } from '@/hooks/use-api';
 
 export default function WorkflowsPage() {
-    const { data: session } = useSession();
+    const api = useApi();
     const [workflows, setWorkflows] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchWorkflows = () => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) return;
+    const fetchWorkflows = async () => {
+        if (!api.orgId) return;
 
-        apiFetch('/api/workflows', {
-            headers: { 'X-ScopeSentinel-Org-ID': orgId }
-        })
-            .then(res => res.json())
-            .then(data => {
-                setWorkflows(data.items || []);
-                setLoading(false);
-            })
-            .catch(e => {
-                console.error(e);
-                setLoading(false);
-            });
+        try {
+            const data = await api.get<{ items: any[] }>('/api/workflows');
+            setWorkflows(data.items || []);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
-        if (session?.user?.org_id) {
+        if (api.orgId) {
             fetchWorkflows();
         }
-    }, [session]);
+    }, [api.orgId]);
 
     const handleDelete = async (id: string) => {
-        const orgId = session?.user?.org_id;
-        if (!orgId) return;
+        if (!api.orgId) return;
 
         if (!confirm("Are you sure you want to delete this workflow?")) return;
         try {
-            await apiFetch(`/api/workflows/${id}`, { 
-                method: 'DELETE',
-                headers: { 'X-ScopeSentinel-Org-ID': orgId }
-            });
+            await api.delete(`/api/workflows/${id}`);
             fetchWorkflows();
         } catch (e) {
             console.error(e);
