@@ -32,7 +32,7 @@ async def authorize(
     state_dict = {"org_id": org_id, "user_id": user_id, "provider": provider}
     state = base64.urlsafe_b64encode(json.dumps(state_dict).encode()).decode()
     
-    redirect_uri = os.environ.get("OAUTH_CALLBACK_URL", "http://localhost:8002/api/connections/oauth/callback")
+    redirect_uri = os.environ.get("OAUTH_CALLBACK_URL", "http://localhost:8005/api/connections/oauth/callback")
     url = await adapter.get_authorization_url(state, redirect_uri)
     return RedirectResponse(url)
 
@@ -56,7 +56,7 @@ async def callback(request: Request):
     if not adapter:
         raise HTTPException(400, "Invalid provider in state")
         
-    redirect_uri = os.environ.get("OAUTH_CALLBACK_URL", "http://localhost:8002/api/connections/oauth/callback")
+    redirect_uri = os.environ.get("OAUTH_CALLBACK_URL", "http://localhost:8005/api/connections/oauth/callback")
     
     try:
         token_data = await adapter.exchange_code(code, redirect_uri)
