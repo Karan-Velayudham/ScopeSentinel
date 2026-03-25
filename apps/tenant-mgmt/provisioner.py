@@ -134,8 +134,8 @@ async def _create_pg_schema(org_id: str, session: AsyncSession) -> None:
     # Set search path and create tenant-specific tables
     await session.execute(text(f"SET LOCAL search_path TO {schema_name}, public"))
 
-    tenant_ddl = f"""
-        CREATE TABLE IF NOT EXISTS {schema_name}.workflows (
+    tenant_ddl = [
+        f"""CREATE TABLE IF NOT EXISTS {schema_name}.workflows (
             id VARCHAR PRIMARY KEY,
             org_id VARCHAR NOT NULL,
             name VARCHAR NOT NULL,
@@ -145,9 +145,9 @@ async def _create_pg_schema(org_id: str, session: AsyncSession) -> None:
             yaml_content TEXT DEFAULT '',
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
+        );""",
 
-        CREATE TABLE IF NOT EXISTS {schema_name}.workflow_runs (
+        f"""CREATE TABLE IF NOT EXISTS {schema_name}.workflow_runs (
             id VARCHAR PRIMARY KEY,
             org_id VARCHAR NOT NULL,
             workflow_id VARCHAR,
@@ -163,9 +163,9 @@ async def _create_pg_schema(org_id: str, session: AsyncSession) -> None:
             estimated_cost FLOAT,
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
+        );""",
 
-        CREATE TABLE IF NOT EXISTS {schema_name}.run_steps (
+        f"""CREATE TABLE IF NOT EXISTS {schema_name}.run_steps (
             id VARCHAR PRIMARY KEY,
             run_id VARCHAR NOT NULL,
             step_name VARCHAR NOT NULL,
@@ -179,18 +179,18 @@ async def _create_pg_schema(org_id: str, session: AsyncSession) -> None:
             prompt_tokens INT,
             completion_tokens INT,
             estimated_cost FLOAT
-        );
+        );""",
 
-        CREATE TABLE IF NOT EXISTS {schema_name}.hitl_events (
+        f"""CREATE TABLE IF NOT EXISTS {schema_name}.hitl_events (
             id VARCHAR PRIMARY KEY,
             run_id VARCHAR NOT NULL,
             action VARCHAR NOT NULL,
             feedback TEXT,
             decided_by_id VARCHAR,
             decided_at TIMESTAMPTZ DEFAULT NOW()
-        );
+        );""",
 
-        CREATE TABLE IF NOT EXISTS {schema_name}.agents (
+        f"""CREATE TABLE IF NOT EXISTS {schema_name}.agents (
             id VARCHAR PRIMARY KEY,
             org_id VARCHAR NOT NULL,
             name VARCHAR NOT NULL,
@@ -200,9 +200,9 @@ async def _create_pg_schema(org_id: str, session: AsyncSession) -> None:
             tools_json TEXT DEFAULT '[]',
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
+        );""",
 
-        CREATE TABLE IF NOT EXISTS {schema_name}.installed_connectors (
+        f"""CREATE TABLE IF NOT EXISTS {schema_name}.installed_connectors (
             id VARCHAR PRIMARY KEY,
             org_id VARCHAR NOT NULL,
             connector_id VARCHAR NOT NULL,
@@ -210,9 +210,12 @@ async def _create_pg_schema(org_id: str, session: AsyncSession) -> None:
             is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
-    """
-    await session.execute(text(tenant_ddl))
+        );"""
+    ]
+
+    for stmt in tenant_ddl:
+        await session.execute(text(stmt))
+    
     await session.commit()
 
 
