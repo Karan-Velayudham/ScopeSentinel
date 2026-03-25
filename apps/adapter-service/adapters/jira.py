@@ -119,8 +119,11 @@ class JiraAdapter(BaseOAuthAdapter):
                     return capabilities
         except Exception as e:
             import structlog
+            import traceback
             logger = structlog.get_logger()
-            logger.error("jira_adapter.discover_capabilities_failed", error=str(e))
+            logger.error("jira_adapter.discover_capabilities_failed", 
+                         error=str(e), 
+                         traceback=traceback.format_exc())
             return []
 
     async def execute_tool(self, tool_name: str, arguments: dict, access_token: str, provider_metadata: dict) -> Any:

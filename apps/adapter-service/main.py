@@ -7,7 +7,17 @@ from core.connection_manager import connection_manager
 
 logger = structlog.get_logger()
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="ScopeSentinel Adapter Service", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(tools.router)
 app.include_router(connections.router)
