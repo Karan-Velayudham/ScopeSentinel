@@ -100,8 +100,11 @@ class JiraAdapter(BaseOAuthAdapter):
             "Authorization": f"Bearer {access_token}"
         }
         
+        mcp_url = "https://api.atlassian.com/mcp/v1/sse"
+        
         try:
-            async with sse_client("https://mcp.atlassian.com/v1/mcp", headers=headers) as (read_stream, write_stream):
+            logger.info("jira_adapter.discover_capabilities_started", url=mcp_url)
+            async with sse_client(mcp_url, headers=headers) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
                     tools_result = await session.list_tools()
@@ -116,6 +119,7 @@ class JiraAdapter(BaseOAuthAdapter):
                                 scopes_required=[]
                             )
                         )
+                    logger.info("jira_adapter.discover_capabilities_success", count=len(capabilities))
                     return capabilities
         except Exception as e:
             import structlog
@@ -134,7 +138,9 @@ class JiraAdapter(BaseOAuthAdapter):
             "Authorization": f"Bearer {access_token}"
         }
         
-        async with sse_client("https://mcp.atlassian.com/v1/mcp", headers=headers) as (read_stream, write_stream):
+        mcp_url = "https://api.atlassian.com/mcp/v1/sse"
+        
+        async with sse_client(mcp_url, headers=headers) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments)

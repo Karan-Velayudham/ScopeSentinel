@@ -49,6 +49,7 @@ async def callback(request: Request):
         provider = state_dict["provider"]
         org_id = state_dict["org_id"]
         user_id = state_dict["user_id"]
+        logger.info("oauth.callback_received", provider=provider, org_id=org_id, user_id=user_id)
     except Exception:
         raise HTTPException(400, "Invalid state format")
         

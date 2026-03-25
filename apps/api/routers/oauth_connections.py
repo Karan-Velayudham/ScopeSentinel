@@ -37,6 +37,7 @@ async def list_connections(
     request: Request,
 ) -> List[OAuthConnectionResponse]:
     org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    logger.info("api.list_oauth_connections", org_id=org_id, user_id=current_user.id)
     query = select(OAuthConnection).where(OAuthConnection.org_id == org_id)
     conns = (await session.exec(query)).all()
     return [_conn_to_response(c) for c in conns]
@@ -120,6 +121,7 @@ async def delete_connection(
     request: Request,
 ):
     org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    logger.info("api.delete_oauth_connection_attempt", provider=provider, org_id=org_id, user_id=current_user.id)
     query = select(OAuthConnection).where(
         OAuthConnection.org_id == org_id,
         OAuthConnection.user_id == current_user.id,
@@ -127,7 +129,10 @@ async def delete_connection(
     )
     conn = (await session.exec(query)).first()
     if not conn:
-        raise HTTPException(status_code=404, detail="Connection not found")
+        logger.warning("api.delete_oauth_connection_not_found", provider=provider, org_id=org_id, user_id=current_user.id)
+        # Even if not found, let's keep going if there's a connector to uninstall
+        # Wait, this is the oauth-connections router. We should probably return 204 anyway to be idempotent.
+        return 
         
     await session.delete(conn)
     await session.commit()

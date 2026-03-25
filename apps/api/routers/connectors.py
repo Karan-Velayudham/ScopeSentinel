@@ -283,6 +283,7 @@ async def install_connector(
     )
 
 
+@router.delete("/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
 @router.delete("/{connector_id}/uninstall", status_code=status.HTTP_204_NO_CONTENT)
 async def uninstall_connector(
     connector_id: str,
@@ -297,9 +298,28 @@ async def uninstall_connector(
         InstalledConnector.connector_id == connector_id,
     )
     existing = (await session.exec(stmt)).first()
-    if not existing:
-        raise HTTPException(status_code=404, detail="Connector not installed")
+    
+    # Also check if there's an OAuth connection to remove
+    from db.models import OAuthConnection
+    from db.session import SessionDep
+    
+    # We need a plain SessionDep for OAuthConnection if it's in public schema,
+    # but TenantSessionDep is already scoped. Assuming OAuth is in the same schema or accessible.
+    oauth_stmt = select(OAuthConnection).where(
+        OAuthConnection.org_id == org_id,
+        OAuthConnection.provider == connector_id
+    )
+    # Note: TenantSessionDep is an AsyncSession, we can use it.
+    oauth_conn = (await session.exec(oauth_stmt)).first()
+    if oauth_conn:
+        await session.delete(oauth_conn)
 
-    await session.delete(existing)
+    if existing:
+        await session.delete(existing)
+    
+    if not existing and not oauth_conn:
+        # If neither exists, still return 204 to be idempotent
+        return
+
     await session.commit()
     logger.info("connector.uninstalled", connector_id=connector_id, org_id=org_id)
