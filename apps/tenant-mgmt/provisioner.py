@@ -224,15 +224,26 @@ async def _create_redpanda_topics(org_id: str) -> None:
     admin = AIOKafkaAdminClient(bootstrap_servers=REDPANDA_BROKERS)
     await admin.start()
     try:
-        topics = [
-            NewTopic(
-                name=f"t.{org_id}.{suffix}",
-                num_partitions=3,
-                replication_factor=1,
-            )
-            for suffix in TENANT_TOPICS
-        ]
-        await admin.create_topics(topics)
+        # Check existing topics to be idempotent
+        existing_topics = await admin.list_topics()
+        
+        new_topics = []
+        for suffix in TENANT_TOPICS:
+            topic_name = f"t.{org_id}.{suffix}"
+            if topic_name not in existing_topics:
+                new_topics.append(
+                    NewTopic(
+                        name=topic_name,
+                        num_partitions=3,
+                        replication_factor=1,
+                    )
+                )
+        
+        if new_topics:
+            await admin.create_topics(new_topics)
+            logger.info("provisioner.redpanda_topics_created", org_id=org_id, count=len(new_topics))
+        else:
+            logger.info("provisioner.redpanda_topics_already_exist", org_id=org_id)
     finally:
         await admin.close()
 

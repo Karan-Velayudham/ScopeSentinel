@@ -112,20 +112,26 @@ async def create_tenant(
     """
     # Check for duplicate slug
     result = await session.exec(select(Org).where(Org.slug == body.slug))
-    if result.first():
-        raise HTTPException(status_code=409, detail=f"Org with slug '{body.slug}' already exists")
-
-    config_json = json.dumps(body.tenant_config) if body.tenant_config else None
-    org = Org(name=body.name, slug=body.slug, tenant_config=config_json)
-    session.add(org)
-    await session.commit()
-    await session.refresh(org)
-
-    logger.info("tenant.created", org_id=org.id, slug=org.slug)
+    org = result.first()
+    if org:
+        if org.status == TenantStatus.ACTIVE:
+            raise HTTPException(status_code=409, detail=f"Org with slug '{body.slug}' is already active")
+        # If still provisioning, we allow re-triggering the provisioner (retry)
+        logger.info("tenant.retry_provisioning", org_id=org.id, slug=org.slug)
+    else:
+        config_json = json.dumps(body.tenant_config) if body.tenant_config else None
+        org = Org(name=body.name, slug=body.slug, tenant_config=config_json)
+        session.add(org)
+        await session.commit()
+        await session.refresh(org)
+        logger.info("tenant.created", org_id=org.id, slug=org.slug)
 
     # Provision infra in the background so the API responds immediately
     background_tasks.add_task(provision_tenant, org, session)
 
+    from fastapi import Response
+    response = Response()
+    response.status_code = 200 if org.id else 201
     return TenantOut.from_orm(org)
 
 
