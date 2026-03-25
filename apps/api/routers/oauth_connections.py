@@ -1,7 +1,7 @@
 import structlog
 from typing import Annotated, List, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Request
 from sqlmodel import select
 
 from auth.api_keys import CurrentUserDep
@@ -34,8 +34,10 @@ def _conn_to_response(conn: OAuthConnection) -> OAuthConnectionResponse:
 async def list_connections(
     session: SessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> List[OAuthConnectionResponse]:
-    query = select(OAuthConnection).where(OAuthConnection.org_id == current_user.org_id)
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    query = select(OAuthConnection).where(OAuthConnection.org_id == org_id)
     conns = (await session.exec(query)).all()
     return [_conn_to_response(c) for c in conns]
 
@@ -44,10 +46,12 @@ async def upsert_connection(
     body: OAuthConnectionCreate,
     session: SessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> OAuthConnectionResponse:
     """Creates or updates an OAuth connection for the user & provider."""
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     query = select(OAuthConnection).where(
-        OAuthConnection.org_id == current_user.org_id,
+        OAuthConnection.org_id == org_id,
         OAuthConnection.user_id == current_user.id,
         OAuthConnection.provider == body.provider
     )
@@ -65,12 +69,12 @@ async def upsert_connection(
         existing.updated_at = datetime.now(timezone.utc)
         session.add(existing)
         await session.commit()
-        await session.refresh(existing)
-        logger.info("api.oauth_connection_updated", provider=body.provider, user=current_user.id)
+        # Skip refresh
+        logger.info("api.oauth_connection_updated", provider=body.provider, user=current_user.id, org_id=org_id)
         return _conn_to_response(existing)
     else:
         new_conn = OAuthConnection(
-            org_id=current_user.org_id,
+            org_id=org_id,
             user_id=current_user.id,
             provider=body.provider,
             access_token_encrypted=enc_access,
@@ -80,8 +84,8 @@ async def upsert_connection(
         )
         session.add(new_conn)
         await session.commit()
-        await session.refresh(new_conn)
-        logger.info("api.oauth_connection_created", provider=body.provider, user=current_user.id)
+        # Skip refresh
+        logger.info("api.oauth_connection_created", provider=body.provider, user=current_user.id, org_id=org_id)
         return _conn_to_response(new_conn)
 
 @router.get("/{provider}/token")
@@ -89,9 +93,11 @@ async def get_connection_token(
     provider: str,
     session: SessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ):
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     query = select(OAuthConnection).where(
-        OAuthConnection.org_id == current_user.org_id,
+        OAuthConnection.org_id == org_id,
         OAuthConnection.provider == provider
     )
     conn = (await session.exec(query)).first()
@@ -111,9 +117,11 @@ async def delete_connection(
     provider: str,
     session: SessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ):
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     query = select(OAuthConnection).where(
-        OAuthConnection.org_id == current_user.org_id,
+        OAuthConnection.org_id == org_id,
         OAuthConnection.user_id == current_user.id,
         OAuthConnection.provider == provider
     )
@@ -123,7 +131,7 @@ async def delete_connection(
         
     await session.delete(conn)
     await session.commit()
-    logger.info("api.oauth_connection_deleted", provider=provider, user=current_user.id)
+    logger.info("api.oauth_connection_deleted", provider=provider, user=current_user.id, org_id=org_id)
 
 @router.post("/internal/save")
 async def internal_save_connection(

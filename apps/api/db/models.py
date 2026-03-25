@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Enum, String
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -177,7 +177,11 @@ class WorkflowRun(SQLModel, table=True):
     workflow_id: Optional[str] = Field(default=None, foreign_key="workflows.id", index=True)
     ticket_id: Optional[str] = Field(default=None, index=True)
     inputs_json: Optional[str] = Field(default=None)
-    status: RunStatus = Field(default=RunStatus.PENDING, index=True)
+    status: RunStatus = Field(
+        default=RunStatus.PENDING,
+        index=True,
+        sa_type=Enum(RunStatus, native_enum=False)
+    )
     dry_run: bool = Field(default=False)
     # JSON-encoded PlannerOutput (set after planning step completes)
     plan_json: Optional[str] = Field(default=None)
@@ -208,7 +212,11 @@ class RunStep(SQLModel, table=True):
     id: str = Field(default_factory=_new_uuid, primary_key=True)
     run_id: str = Field(foreign_key="workflow_runs.id", index=True)
     step_name: str  # e.g. "fetch_ticket", "plan", "hitl", "code", "git_push"
-    status: StepStatus = Field(default=StepStatus.PENDING, index=True)
+    status: StepStatus = Field(
+        default=StepStatus.PENDING,
+        index=True,
+        sa_type=Enum(StepStatus, native_enum=False)
+    )
     # Arbitrary JSON blobs for traceability
     input_json: Optional[str] = Field(default=None)
     output_json: Optional[str] = Field(default=None)
@@ -235,7 +243,7 @@ class HitlEvent(SQLModel, table=True):
 
     id: str = Field(default_factory=_new_uuid, primary_key=True)
     run_id: str = Field(foreign_key="workflow_runs.id", index=True)
-    action: HitlAction
+    action: HitlAction = Field(sa_type=Enum(HitlAction, native_enum=False))
     feedback: Optional[str] = Field(default=None)
     # Who made the decision (NULL = anonymous / pre-auth)
     decided_by_id: Optional[str] = Field(default=None, foreign_key="users.id")

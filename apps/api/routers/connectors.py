@@ -70,9 +70,11 @@ async def list_available_connectors(current_user: CurrentUserDep):
 async def list_installed_connectors(
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ):
     """Returns connectors installed by the current org, enriched with tools."""
-    stmt = select(InstalledConnector).where(InstalledConnector.org_id == current_user.org_id)
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    stmt = select(InstalledConnector).where(InstalledConnector.org_id == org_id)
     items = (await session.exec(stmt)).all()
 
     result = []
@@ -151,6 +153,7 @@ async def oauth_init(
     callback_url = f"{base_url}/api/connectors/oauth/callback"
 
     # Compose authorization URL
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     scope_str = " ".join(oauth_cfg.scopes)
     extra_qs = "&".join(f"{k}={v}" for k, v in oauth_cfg.extra_params.items())
     authorization_url = (
@@ -158,12 +161,12 @@ async def oauth_init(
         f"?client_id={client_id}"
         f"&redirect_uri={callback_url}"
         f"&scope={scope_str}"
-        f"&state={state}___{connector_id}___{current_user.org_id}"
+        f"&state={state}___{connector_id}___{org_id}"
         f"&response_type=code"
         + (f"&{extra_qs}" if extra_qs else "")
     )
 
-    logger.info("connector.oauth_init", connector_id=connector_id, org_id=current_user.org_id)
+    logger.info("connector.oauth_init", connector_id=connector_id, org_id=org_id)
     return OAuthInitResponse(
         authorization_url=authorization_url,
         state=state,
@@ -193,7 +196,7 @@ async def oauth_callback(
     # Manually set search path for this session since we just resolved the org_id
     from sqlalchemy import text
     safe_org_id = org_id.replace("-", "_")
-    await session.execute(text(f"SET LOCAL search_path TO tenant_{safe_org_id}, public"))
+    await session.execute(text(f"SET search_path TO tenant_{safe_org_id}, public"))
 
     cls = get_connector_class(connector_id)
     if not cls:
@@ -244,14 +247,16 @@ async def install_connector(
     body: ConnectorInstallRequest,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ):
     """Install a connector using API key credentials."""
     cls = get_connector_class(connector_id)
     if not cls:
         raise HTTPException(status_code=404, detail="Connector not found")
 
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     stmt = select(InstalledConnector).where(
-        InstalledConnector.org_id == current_user.org_id,
+        InstalledConnector.org_id == org_id,
         InstalledConnector.connector_id == connector_id,
     )
     existing = (await session.exec(stmt)).first()
@@ -259,15 +264,15 @@ async def install_connector(
         raise HTTPException(status_code=400, detail="Connector already installed")
 
     new_connector = InstalledConnector(
-        org_id=current_user.org_id,
+        org_id=org_id,
         connector_id=connector_id,
         config_json=json.dumps(body.config),
     )
     session.add(new_connector)
     await session.commit()
-    await session.refresh(new_connector)
-
-    logger.info("connector.installed", connector_id=connector_id, org_id=current_user.org_id)
+    # Skip refresh to avoid potential 500
+    
+    logger.info("connector.installed", connector_id=connector_id, org_id=org_id)
     return InstalledConnectorResponse(
         id=new_connector.id,
         connector_id=new_connector.connector_id,
@@ -282,10 +287,12 @@ async def uninstall_connector(
     connector_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> None:
     """Remove an installed connector from the org."""
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     stmt = select(InstalledConnector).where(
-        InstalledConnector.org_id == current_user.org_id,
+        InstalledConnector.org_id == org_id,
         InstalledConnector.connector_id == connector_id,
     )
     existing = (await session.exec(stmt)).first()
@@ -294,4 +301,4 @@ async def uninstall_connector(
 
     await session.delete(existing)
     await session.commit()
-    logger.info("connector.uninstalled", connector_id=connector_id, org_id=current_user.org_id)
+    logger.info("connector.uninstalled", connector_id=connector_id, org_id=org_id)

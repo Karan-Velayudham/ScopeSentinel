@@ -61,6 +61,7 @@ async def create_db_and_tables() -> None:
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields an async DB session (public schema)."""
     async with AsyncSession(engine, expire_on_commit=False) as session:
+        await session.execute(text("SET search_path TO public"))
         yield session
 
 
@@ -68,13 +69,16 @@ async def get_tenant_session(request: Request) -> AsyncGenerator[AsyncSession, N
     """FastAPI dependency that yields a tenant-scoped DB session.
 
     Reads `request.state.tenant_id` (set by TenantMiddleware) and executes
-    `SET LOCAL search_path TO tenant_{id}, public` so all queries within the
+    `SET search_path TO tenant_{id}, public` so all queries within the
     session are automatically scoped to the tenant's schema.
     """
     async with AsyncSession(engine, expire_on_commit=False) as session:
         tenant_id = getattr(request.state, "tenant_id", None)
         if tenant_id:
-            await session.execute(text(f"SET LOCAL search_path TO tenant_{tenant_id}, public"))
+            # Use SET instead of SET LOCAL to persist across transactions in the same session/connection
+            await session.execute(text(f"SET search_path TO tenant_{tenant_id}, public"))
+        else:
+            await session.execute(text("SET search_path TO public"))
         yield session
 
 

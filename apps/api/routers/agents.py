@@ -1,7 +1,7 @@
 import json
 from typing import Annotated, Optional
 import structlog
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Request
 from sqlmodel import select, func
 
 from auth.api_keys import CurrentUserDep
@@ -43,9 +43,11 @@ async def create_agent(
     body: AgentCreateRequest,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> AgentResponse:
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     agent = Agent(
-        org_id=current_user.org_id,
+        org_id=org_id,
         name=body.name,
         description=body.description,
         identity=body.identity,
@@ -54,22 +56,24 @@ async def create_agent(
     )
     session.add(agent)
     await session.commit()
-    await session.refresh(agent)
+    # Skip refresh to avoid potential 500 during session-persisted refresh
     
-    logger.info("api.agent_created", agent_id=agent.id)
+    logger.info("api.agent_created", agent_id=agent.id, org_id=org_id)
     return _agent_to_response(agent)
 
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> AgentListResponse:
-    query = select(Agent).where(Agent.org_id == current_user.org_id).order_by(Agent.created_at.desc())
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    query = select(Agent).where(Agent.org_id == org_id).order_by(Agent.created_at.desc())
     
     count_query = select(func.count()).select_from(
-        select(Agent).where(Agent.org_id == current_user.org_id).subquery()
+        select(Agent).where(Agent.org_id == org_id).subquery()
     )
     total = (await session.exec(count_query)).one()
     
@@ -91,8 +95,10 @@ async def get_agent(
     agent_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> AgentResponse:
-    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == current_user.org_id))).first()
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id))).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return _agent_to_response(agent)
@@ -103,8 +109,10 @@ async def update_agent(
     body: AgentUpdateRequest,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> AgentResponse:
-    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == current_user.org_id))).first()
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id))).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
         
@@ -131,8 +139,8 @@ async def update_agent(
         agent.updated_at = datetime.datetime.now(datetime.timezone.utc)
         session.add(agent)
         await session.commit()
-        await session.refresh(agent)
-        logger.info("api.agent_updated", agent_id=agent.id)
+        # Skip refresh to avoid potential 500
+        logger.info("api.agent_updated", agent_id=agent.id, org_id=org_id)
         
     return _agent_to_response(agent)
 
@@ -141,11 +149,13 @@ async def delete_agent(
     agent_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> None:
-    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == current_user.org_id))).first()
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id))).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     
     await session.delete(agent)
     await session.commit()
-    logger.info("api.agent_deleted", agent_id=agent_id)
+    logger.info("api.agent_deleted", agent_id=agent_id, org_id=org_id)

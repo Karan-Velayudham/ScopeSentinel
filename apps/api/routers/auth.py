@@ -79,7 +79,7 @@ async def auth_sync(body: AuthSyncRequest, session: SessionDep):
         )
         session.add(user)
         await session.commit()
-        await session.refresh(user)
+        # Skip refresh to avoid potential 500 during multi-tenant session persistence
         logger.info("auth.sync_new_user_complete", user_id=user.id, org_id=org_id)
         return {"status": "ok", "user_id": user.id, "org_id": org_id, "new_user": True}
     

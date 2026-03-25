@@ -16,7 +16,7 @@ import secrets
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Request
 from pydantic import BaseModel
 from sqlmodel import select
 
@@ -60,12 +60,13 @@ class ApiKeyResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("", response_model=list[UserOut])
-async def list_users(current_user: CurrentUserDep, session: SessionDep):
+async def list_users(current_user: CurrentUserDep, session: SessionDep, request: Request):
     """List all users in the caller's organisation."""
     if current_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
-    result = await session.exec(select(User).where(User.org_id == current_user.org_id))
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    result = await session.exec(select(User).where(User.org_id == org_id))
     users = result.all()
     return [
         UserOut(
@@ -84,23 +85,25 @@ async def invite_user(
     body: InviteUserRequest,
     current_user: CurrentUserDep,
     session: SessionDep,
+    request: Request,
 ):
     """Invite a new user to the org. Only ORG_ADMIN can do this."""
     if current_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     assert_can_manage_users(current_user)
 
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     # Check if user already exists
     result = await session.exec(select(User).where(User.email == body.email))
     if result.first():
         raise HTTPException(status_code=409, detail=f"User '{body.email}' already exists")
 
-    user = User(org_id=current_user.org_id, email=body.email, role=body.role)
+    user = User(org_id=org_id, email=body.email, role=body.role)
     session.add(user)
     await session.commit()
-    await session.refresh(user)
-
-    logger.info("users.invited", invited_email=body.email, by=current_user.email, role=body.role)
+    # Skip refresh
+    
+    logger.info("users.invited", invited_email=body.email, by=current_user.email, role=body.role, org_id=org_id)
     return UserOut(id=user.id, email=user.email, role=user.role.value, has_api_key=False, org_id=user.org_id)
 
 
@@ -110,14 +113,16 @@ async def update_user_role(
     body: UpdateRoleRequest,
     current_user: CurrentUserDep,
     session: SessionDep,
+    request: Request,
 ):
     """Change a user's role. Only ORG_ADMIN can do this."""
     if current_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     assert_can_manage_users(current_user)
 
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     result = await session.exec(
-        select(User).where(User.id == user_id, User.org_id == current_user.org_id)
+        select(User).where(User.id == user_id, User.org_id == org_id)
     )
     target = result.first()
     if not target:
@@ -128,7 +133,7 @@ async def update_user_role(
     session.add(target)
     await session.commit()
 
-    logger.info("users.role_changed", target_id=user_id, old=old_role, new=body.role, by=current_user.email)
+    logger.info("users.role_changed", target_id=user_id, old=old_role, new=body.role, by=current_user.email, org_id=org_id)
     return UserOut(id=target.id, email=target.email, role=target.role.value, has_api_key=target.hashed_api_key is not None, org_id=target.org_id)
 
 
@@ -137,17 +142,16 @@ async def remove_user(
     user_id: str,
     current_user: CurrentUserDep,
     session: SessionDep,
+    request: Request,
 ):
     """Remove a user from the org. Only ORG_ADMIN can do this."""
     if current_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     assert_can_manage_users(current_user)
 
-    if user_id == current_user.id:
-        raise HTTPException(status_code=400, detail="Cannot remove yourself")
-
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     result = await session.exec(
-        select(User).where(User.id == user_id, User.org_id == current_user.org_id)
+        select(User).where(User.id == user_id, User.org_id == org_id)
     )
     target = result.first()
     if not target:
@@ -155,14 +159,16 @@ async def remove_user(
 
     await session.delete(target)
     await session.commit()
-    logger.info("users.removed", target_id=user_id, by=current_user.email)
+    logger.info("users.removed", target_id=user_id, by=current_user.email, org_id=org_id)
 
 
 @router.post("/api-keys", response_model=ApiKeyResponse, status_code=201)
-async def generate_api_key(current_user: CurrentUserDep, session: SessionDep):
+async def generate_api_key(current_user: CurrentUserDep, session: SessionDep, request: Request):
     """Generate a new API key for yourself. Replaces any existing key."""
     if current_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
 
     raw_key = f"sk-{secrets.token_urlsafe(32)}"
     result = await session.exec(select(User).where(User.id == current_user.id))
@@ -176,10 +182,12 @@ async def generate_api_key(current_user: CurrentUserDep, session: SessionDep):
 
 
 @router.delete("/api-keys", status_code=204)
-async def revoke_api_key(current_user: CurrentUserDep, session: SessionDep):
+async def revoke_api_key(current_user: CurrentUserDep, session: SessionDep, request: Request):
     """Revoke your current API key."""
     if current_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
 
     result = await session.exec(select(User).where(User.id == current_user.id))
     user = result.first()

@@ -40,8 +40,10 @@ class TenantMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         org_id = request.headers.get("X-ScopeSentinel-Org-ID")
         if org_id:
+            request.state.org_id = org_id
             request.state.tenant_id = org_id.replace("-", "_")
         else:
+            request.state.org_id = None
             request.state.tenant_id = None
 
         response = await call_next(request)

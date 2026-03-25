@@ -17,7 +17,7 @@ from typing import Annotated, Optional
 
 import redis.asyncio as aioredis
 import structlog
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status, Request
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
@@ -69,37 +69,39 @@ def _run_to_response(run: WorkflowRun) -> RunResponse:
 async def get_dashboard_stats(
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ):
     """Fetch real metrics for the dashboard."""
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     # Active Runs (RUNNING or WAITING_HITL)
     stmt_active = select(func.count(WorkflowRun.id)).where(
-        WorkflowRun.org_id == current_user.org_id,
+        WorkflowRun.org_id == org_id,
         WorkflowRun.status.in_([RunStatus.RUNNING, RunStatus.WAITING_HITL])
     )
     active_count = (await session.exec(stmt_active)).one()
 
     # Total Executed
     stmt_total = select(func.count(WorkflowRun.id)).where(
-        WorkflowRun.org_id == current_user.org_id
+        WorkflowRun.org_id == org_id
     )
     total_count = (await session.exec(stmt_total)).one()
 
     # Pending HITL
     stmt_hitl = select(func.count(WorkflowRun.id)).where(
-        WorkflowRun.org_id == current_user.org_id,
+        WorkflowRun.org_id == org_id,
         WorkflowRun.status == RunStatus.WAITING_HITL
     )
     hitl_count = (await session.exec(stmt_hitl)).one()
 
     # Success Rate
     stmt_success = select(func.count(WorkflowRun.id)).where(
-        WorkflowRun.org_id == current_user.org_id,
+        WorkflowRun.org_id == org_id,
         WorkflowRun.status == RunStatus.SUCCEEDED
     )
     success_count = (await session.exec(stmt_success)).one()
 
     stmt_finished = select(func.count(WorkflowRun.id)).where(
-        WorkflowRun.org_id == current_user.org_id,
+        WorkflowRun.org_id == org_id,
         WorkflowRun.status.in_([RunStatus.SUCCEEDED, RunStatus.FAILED])
     )
     finished_count = (await session.exec(stmt_finished)).one()
@@ -123,21 +125,23 @@ async def trigger_run(
     body: TriggerRunRequest,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> RunResponse:
     """Trigger a new workflow run. Requires DEVELOPER role or above."""
     assert_can_trigger(current_user)
     import json
     log = logger.bind(user_id=current_user.id)
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     if body.ticket_id:
         log = log.bind(ticket_id=body.ticket_id)
     if body.workflow_id:
         log = log.bind(workflow_id=body.workflow_id)
-    log.info("api.trigger_run")
+    log.info("api.trigger_run", org_id=org_id)
 
     inputs_str = json.dumps(body.inputs) if body.inputs else None
 
     run = WorkflowRun(
-        org_id=current_user.org_id,
+        org_id=org_id,
         ticket_id=body.ticket_id,
         workflow_id=body.workflow_id,
         inputs_json=inputs_str,
@@ -146,7 +150,7 @@ async def trigger_run(
     )
     session.add(run)
     await session.commit()
-    await session.refresh(run)
+    # Skip refresh to avoid potential 500
 
     # Dispatch to Temporal worker only for legacy Phase 1 (ticket_id present)
     # Dynamic workflow execution (Phase 3) is not yet implemented
@@ -201,12 +205,14 @@ async def _publish_metering_event(org_id: str, event_type: str, tokens: int = 0)
 async def list_runs(
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     status_filter: Annotated[Optional[str], Query(alias="status")] = None,
 ) -> RunListResponse:
     """List all workflow runs for the current org, newest first."""
-    query = select(WorkflowRun).where(WorkflowRun.org_id == current_user.org_id)
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    query = select(WorkflowRun).where(WorkflowRun.org_id == org_id)
 
     if status_filter:
         try:
@@ -254,9 +260,11 @@ async def get_run(
     run_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> RunDetailResponse:
     """Get the full details of a run including all steps and HITL events."""
-    run = await _get_run_or_404(run_id, current_user.org_id, session)
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    run = await _get_run_or_404(run_id, org_id, session)
 
     return RunDetailResponse(
         run_id=run.id,
@@ -298,9 +306,11 @@ async def get_plan(
     run_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> PlanResponse:
     """Return the structured planning output for a run."""
-    run = await _get_run_or_404(run_id, current_user.org_id, session)
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    run = await _get_run_or_404(run_id, org_id, session)
 
     plan_data: Optional[dict] = None
     if run.plan_json:
@@ -322,13 +332,15 @@ async def submit_decision(
     body: DecisionRequest,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> DecisionResponse:
     """
     Submit a HITL decision for a run that is in WAITING_HITL status.
     Requires REVIEWER role or above.
     """
     assert_can_approve_hitl(current_user)
-    run = await _get_run_or_404(run_id, current_user.org_id, session)
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    run = await _get_run_or_404(run_id, org_id, session)
 
     if run.status != RunStatus.WAITING_HITL:
         raise HTTPException(
@@ -420,6 +432,7 @@ async def _get_run_or_404(
     session: TenantSessionDep,
 ) -> WorkflowRun:
     """Fetch a WorkflowRun by ID, scoped to the org. Raises 404 if not found."""
+    # org_id here is already determined by the router (either header or current_user)
     result = await session.exec(
         select(WorkflowRun).where(
             WorkflowRun.id == run_id,

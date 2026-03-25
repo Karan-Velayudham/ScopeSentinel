@@ -1,7 +1,7 @@
 import yaml
 from typing import Annotated, Optional
 import structlog
-from fastapi import APIRouter, HTTPException, Query, status, Response, File, UploadFile
+from fastapi import APIRouter, HTTPException, Query, status, Response, File, UploadFile, Request
 from sqlmodel import select
 
 from auth.api_keys import CurrentUserDep
@@ -117,11 +117,13 @@ async def create_workflow(
     body: WorkflowCreateRequest,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> WorkflowResponse:
     _validate_yaml_dsl(body.yaml_content)
     
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     wf = Workflow(
-        org_id=current_user.org_id,
+        org_id=org_id,
         name=body.name,
         description=body.description,
         yaml_content=body.yaml_content,
@@ -129,23 +131,25 @@ async def create_workflow(
     )
     session.add(wf)
     await session.commit()
-    await session.refresh(wf)
+    # Skip refresh to avoid potential 500
     
-    logger.info("api.workflow_created", workflow_id=wf.id)
+    logger.info("api.workflow_created", workflow_id=wf.id, org_id=org_id)
     return _workflow_to_response(wf)
 
 @router.get("/", response_model=WorkflowListResponse)
 async def list_workflows(
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> WorkflowListResponse:
-    query = select(Workflow).where(Workflow.org_id == current_user.org_id).order_by(Workflow.created_at.desc())
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    query = select(Workflow).where(Workflow.org_id == org_id).order_by(Workflow.created_at.desc())
     
     from sqlalchemy import func
     count_query = select(func.count()).select_from(
-        select(Workflow).where(Workflow.org_id == current_user.org_id).subquery()
+        select(Workflow).where(Workflow.org_id == org_id).subquery()
     )
     total = (await session.exec(count_query)).one()
     
@@ -167,8 +171,10 @@ async def get_workflow(
     workflow_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> WorkflowResponse:
-    wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id))).first()
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == org_id))).first()
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
     return _workflow_to_response(wf)
@@ -179,8 +185,10 @@ async def update_workflow(
     body: WorkflowUpdateRequest,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> WorkflowResponse:
-    wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id))).first()
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == org_id))).first()
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
         
@@ -215,8 +223,10 @@ async def delete_workflow(
     workflow_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> None:
-    wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id))).first()
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == org_id))).first()
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
     
@@ -228,6 +238,7 @@ async def delete_workflow(
 async def import_workflow(
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
     file: UploadFile = File(...),
 ) -> WorkflowResponse:
     """Import a YAML file as a new Workflow."""
@@ -241,17 +252,18 @@ async def import_workflow(
     if name.endswith(".yaml") or name.endswith(".yml"):
         name = name.rsplit(".", 1)[0]
     
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     wf = Workflow(
-        org_id=current_user.org_id,
+        org_id=org_id,
         name=name,
         yaml_content=yaml_str,
         version=1,
     )
     session.add(wf)
     await session.commit()
-    await session.refresh(wf)
+    # Skip refresh
     
-    logger.info("api.workflow_imported", workflow_id=wf.id)
+    logger.info("api.workflow_imported", workflow_id=wf.id, org_id=org_id)
     return _workflow_to_response(wf)
 
 @router.get("/{workflow_id}/export")
@@ -259,8 +271,10 @@ async def export_workflow(
     workflow_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> Response:
-    wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id))).first()
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == org_id))).first()
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
     
@@ -276,10 +290,12 @@ async def activate_workflow(
     workflow_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> WorkflowActivateResponse:
     """Activate a workflow to make it a trigger listener."""
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     wf = (await session.exec(
-        select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id)
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == org_id)
     )).first()
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -295,15 +311,17 @@ async def deactivate_workflow(
     workflow_id: str,
     session: TenantSessionDep,
     current_user: CurrentUserDep,
+    request: Request,
 ) -> WorkflowActivateResponse:
-    """Pause an active workflow."""
+    """Deactivate a workflow."""
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
     wf = (await session.exec(
-        select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id)
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == org_id)
     )).first()
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
-    wf.status = "paused"
+    wf.status = "draft"
     session.add(wf)
     await session.commit()
-    logger.info("workflow.deactivated", workflow_id=workflow_id)
-    return WorkflowActivateResponse(id=wf.id, status="paused")
+    logger.info("workflow.deactivated", workflow_id=workflow_id, org_id=org_id)
+    return WorkflowActivateResponse(id=wf.id, status="draft")
