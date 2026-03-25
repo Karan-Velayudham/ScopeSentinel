@@ -7,7 +7,7 @@ Verifies the X-Api-Key header against SHA-256-hashed keys stored in the DB.
 from typing import Annotated, Optional
 
 import structlog
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Security, status, Request
 from fastapi.security import APIKeyHeader
 
 from db.models import User
