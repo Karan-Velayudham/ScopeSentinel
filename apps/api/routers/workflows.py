@@ -6,7 +6,7 @@ from sqlmodel import select
 
 from auth.api_keys import CurrentUserDep
 from db.models import Workflow
-from db.session import SessionDep
+from db.session import SessionDep, TenantSessionDep
 from schemas import (
     PaginationMeta,
     WorkflowCreateRequest,
@@ -115,7 +115,7 @@ async def get_templates(current_user: CurrentUserDep):  # FIX M-3: added auth gu
 @router.post("/", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
 async def create_workflow(
     body: WorkflowCreateRequest,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> WorkflowResponse:
     _validate_yaml_dsl(body.yaml_content)
@@ -136,7 +136,7 @@ async def create_workflow(
 
 @router.get("/", response_model=WorkflowListResponse)
 async def list_workflows(
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -165,7 +165,7 @@ async def list_workflows(
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
 async def get_workflow(
     workflow_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> WorkflowResponse:
     wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id))).first()
@@ -177,7 +177,7 @@ async def get_workflow(
 async def update_workflow(
     workflow_id: str,
     body: WorkflowUpdateRequest,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> WorkflowResponse:
     wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id))).first()
@@ -213,7 +213,7 @@ async def update_workflow(
 @router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workflow(
     workflow_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> None:
     wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id))).first()
@@ -226,7 +226,7 @@ async def delete_workflow(
 
 @router.post("/import", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
 async def import_workflow(
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ) -> WorkflowResponse:
@@ -257,7 +257,7 @@ async def import_workflow(
 @router.get("/{workflow_id}/export")
 async def export_workflow(
     workflow_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> Response:
     wf = (await session.exec(select(Workflow).where(Workflow.id == workflow_id, Workflow.org_id == current_user.org_id))).first()
@@ -274,7 +274,7 @@ async def export_workflow(
 @router.post("/{workflow_id}/activate", response_model=WorkflowActivateResponse)
 async def activate_workflow(
     workflow_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> WorkflowActivateResponse:
     """Activate a workflow to make it a trigger listener."""
@@ -293,7 +293,7 @@ async def activate_workflow(
 @router.post("/{workflow_id}/deactivate", response_model=WorkflowActivateResponse)
 async def deactivate_workflow(
     workflow_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> WorkflowActivateResponse:
     """Pause an active workflow."""

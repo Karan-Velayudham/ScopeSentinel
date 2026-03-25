@@ -30,6 +30,7 @@ async def _get_user_by_api_key(
 
 
 async def get_current_user(
+    request: Request,
     api_key: Annotated[Optional[str], Security(_api_key_header)],
     session: SessionDep,
 ) -> User:
@@ -45,6 +46,9 @@ async def get_current_user(
         user = await _get_user_by_api_key(api_key, session)
         if user:
             logger.bind(user_id=user.id, auth_method="api_key")
+            # Set request.state.tenant_id if not already set by middleware header
+            if not getattr(request.state, "tenant_id", None):
+                request.state.tenant_id = user.org_id.replace("-", "_")
             return user
 
     raise HTTPException(

@@ -30,6 +30,7 @@ import { InputNode } from './nodes/InputNode';
 import { OutputNode } from './nodes/OutputNode';
 import { OAuthConnectModal } from './OAuthConnectModal';
 import { apiFetch } from "@/lib/api-client";
+import { useSession } from "next-auth/react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ export function DesignerComponent({
     initialStatus?: string;
     onSave: (nodes: Node[], edges: Edge[], name: string) => void;
 }) {
+    const { data: session } = useSession();
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -138,11 +140,16 @@ export function DesignerComponent({
 
     // ── Activate / Deactivate ─────────────────────────────────────────────────
     const handleActivate = async () => {
-        if (!workflowId) return;
+        const orgId = session?.user?.org_id;
+        if (!orgId || !workflowId) return;
+
         setActivating(true);
         try {
             const action = status === 'active' ? 'deactivate' : 'activate';
-            const res = await apiFetch(`/api/workflows/${workflowId}/${action}`, { method: 'POST' });
+            const res = await apiFetch(`/api/workflows/${workflowId}/${action}`, { 
+                method: 'POST',
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            });
             if (res.ok) {
                 const data = await res.json();
                 setStatus(data.status);
@@ -173,10 +180,17 @@ export function DesignerComponent({
     };
 
     const handleExecuteRun = async (inputs: Record<string, string>) => {
+        const orgId = session?.user?.org_id;
+        if (!orgId) {
+            alert("No organization context found.");
+            return;
+        }
+
         setRunning(true);
         try {
             const res = await apiFetch('/api/runs/', {
                 method: 'POST',
+                headers: { 'X-ScopeSentinel-Org-ID': orgId },
                 body: JSON.stringify({
                     workflow_id: workflowId,
                     inputs,

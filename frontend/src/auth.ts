@@ -43,13 +43,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 return false;
             }
         },
-        authorized({ auth, request: { nextUrl } }) {
+        async authorized({ auth, request: { nextUrl } }) {
             const isLoggedIn = !!auth?.user
             const isOnAuthPage = nextUrl.pathname.startsWith("/auth")
             if (!isLoggedIn && !isOnAuthPage) {
                 return false // Redirect to login
             }
             return true
+        },
+        async jwt({ token, user, trigger }) {
+            if (user && user.email) {
+                // Initial sign in or user update
+                try {
+                    const api_url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                    const res = await fetch(`${api_url}/api/auth/sync`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: user.email,
+                            name: user.name || user.email.split('@')[0],
+                        })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        token.org_id = data.org_id;
+                    }
+                } catch (e) {
+                    console.error("JWT sync failed", e);
+                }
+            }
+            return token;
+        },
+        async session({ session, token }) {
+            if (token.org_id) {
+                session.user.org_id = token.org_id as string;
+            }
+            return session;
         },
     },
 })

@@ -4,13 +4,20 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { useSession } from 'next-auth/react';
 
 export default function WorkflowsPage() {
+    const { data: session } = useSession();
     const [workflows, setWorkflows] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchWorkflows = () => {
-        apiFetch('/api/workflows')
+        const orgId = session?.user?.org_id;
+        if (!orgId) return;
+
+        apiFetch('/api/workflows', {
+            headers: { 'X-ScopeSentinel-Org-ID': orgId }
+        })
             .then(res => res.json())
             .then(data => {
                 setWorkflows(data.items || []);
@@ -23,13 +30,21 @@ export default function WorkflowsPage() {
     };
 
     useEffect(() => {
-        fetchWorkflows();
-    }, []);
+        if (session?.user?.org_id) {
+            fetchWorkflows();
+        }
+    }, [session]);
 
     const handleDelete = async (id: string) => {
+        const orgId = session?.user?.org_id;
+        if (!orgId) return;
+
         if (!confirm("Are you sure you want to delete this workflow?")) return;
         try {
-            await apiFetch(`/api/workflows/${id}`, { method: 'DELETE' });
+            await apiFetch(`/api/workflows/${id}`, { 
+                method: 'DELETE',
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            });
             fetchWorkflows();
         } catch (e) {
             console.error(e);

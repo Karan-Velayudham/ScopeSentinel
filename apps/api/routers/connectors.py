@@ -11,7 +11,7 @@ from sqlmodel import select
 
 from auth.api_keys import CurrentUserDep
 from db.models import InstalledConnector
-from db.session import SessionDep
+from db.session import SessionDep, TenantSessionDep
 from schemas import (
     ConnectorInfo,
     ConnectorInfoExtended,
@@ -68,7 +68,7 @@ async def list_available_connectors(current_user: CurrentUserDep):
 
 @router.get("/installed", response_model=list[InstalledConnectorDetailResponse])
 async def list_installed_connectors(
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ):
     """Returns connectors installed by the current org, enriched with tools."""
@@ -190,6 +190,11 @@ async def oauth_callback(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid OAuth state parameter")
 
+    # Manually set search path for this session since we just resolved the org_id
+    from sqlalchemy import text
+    safe_org_id = org_id.replace("-", "_")
+    await session.execute(text(f"SET LOCAL search_path TO tenant_{safe_org_id}, public"))
+
     cls = get_connector_class(connector_id)
     if not cls:
         raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found")
@@ -237,7 +242,7 @@ async def oauth_callback(
 async def install_connector(
     connector_id: str,
     body: ConnectorInstallRequest,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ):
     """Install a connector using API key credentials."""
@@ -275,7 +280,7 @@ async def install_connector(
 @router.delete("/{connector_id}/uninstall", status_code=status.HTTP_204_NO_CONTENT)
 async def uninstall_connector(
     connector_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> None:
     """Remove an installed connector from the org."""

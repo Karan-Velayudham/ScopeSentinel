@@ -4,13 +4,20 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Activity, Workflow, CheckCircle, Clock } from "lucide-react"
 import { apiGet } from "@/lib/api-client"
+import { useSession } from "next-auth/react"
 
 export default function Home() {
+  const { data: session } = useSession();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiGet<any>("/api/runs/stats")
+    const orgId = session?.user?.org_id;
+    if (!orgId) return;
+
+    apiGet<any>("/api/runs/stats", {
+      headers: { 'X-ScopeSentinel-Org-ID': orgId }
+    })
       .then(data => {
         setStats(data);
         setLoading(false);
@@ -19,7 +26,7 @@ export default function Home() {
         console.error("Failed to fetch dashboard stats", err);
         setLoading(false);
       });
-  }, []);
+  }, [session]);
 
   if (loading) return <div className="p-8 text-muted-foreground italic">Loading dashboard...</div>
 

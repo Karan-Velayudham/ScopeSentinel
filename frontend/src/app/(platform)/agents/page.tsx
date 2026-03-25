@@ -7,16 +7,23 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { apiFetch } from "@/lib/api-client"
+import { useSession } from "next-auth/react"
 import Link from "next/link"
 
 export default function AgentsPage() {
+    const { data: session } = useSession()
     const [agents, setAgents] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState("")
 
     const fetchAgents = async () => {
+        const orgId = session?.user?.org_id
+        if (!orgId) return
+
         try {
-            const res = await apiFetch('/api/agents')
+            const res = await apiFetch('/api/agents', {
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            })
             const data = await res.json()
             setAgents(data.items || [])
         } catch (e) {
@@ -26,12 +33,22 @@ export default function AgentsPage() {
         }
     }
 
-    useEffect(() => { fetchAgents() }, [])
+    useEffect(() => { 
+        if (session?.user?.org_id) {
+            fetchAgents() 
+        }
+    }, [session])
 
     const handleDelete = async (agentId: string, name: string) => {
+        const orgId = session?.user?.org_id
+        if (!orgId) return
+
         if (!confirm(`Are you sure you want to delete agent "${name}"?`)) return
         try {
-            const res = await apiFetch(`/api/agents/${agentId}`, { method: 'DELETE' })
+            const res = await apiFetch(`/api/agents/${agentId}`, { 
+                method: 'DELETE',
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            })
             if (res.ok || res.status === 204) {
                 setAgents(agents.filter(a => a.id !== agentId))
             } else {

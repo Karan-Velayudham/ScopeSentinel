@@ -24,7 +24,7 @@ from sqlmodel import select
 from auth.api_keys import CurrentUserDep
 from auth.rbac import assert_can_trigger, assert_can_approve_hitl
 from db.models import HitlAction, HitlEvent, RunStatus, WorkflowRun
-from db.session import SessionDep
+from db.session import SessionDep, TenantSessionDep
 from schemas import (
     DecisionRequest,
     DecisionResponse,
@@ -67,7 +67,7 @@ def _run_to_response(run: WorkflowRun) -> RunResponse:
 # ---------------------------------------------------------------------------
 @router.get("/stats", response_model=DashboardStatsResponse)
 async def get_dashboard_stats(
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ):
     """Fetch real metrics for the dashboard."""
@@ -121,7 +121,7 @@ async def get_dashboard_stats(
 @router.post("/", response_model=RunResponse, status_code=status.HTTP_201_CREATED)
 async def trigger_run(
     body: TriggerRunRequest,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> RunResponse:
     """Trigger a new workflow run. Requires DEVELOPER role or above."""
@@ -199,7 +199,7 @@ async def _publish_metering_event(org_id: str, event_type: str, tokens: int = 0)
 
 @router.get("/", response_model=RunListResponse)
 async def list_runs(
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -252,7 +252,7 @@ async def list_runs(
 @router.get("/{run_id}", response_model=RunDetailResponse)
 async def get_run(
     run_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> RunDetailResponse:
     """Get the full details of a run including all steps and HITL events."""
@@ -296,7 +296,7 @@ async def get_run(
 @router.get("/{run_id}/plan", response_model=PlanResponse)
 async def get_plan(
     run_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> PlanResponse:
     """Return the structured planning output for a run."""
@@ -320,7 +320,7 @@ async def get_plan(
 async def submit_decision(
     run_id: str,
     body: DecisionRequest,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> DecisionResponse:
     """
@@ -417,7 +417,7 @@ async def stream_logs(
 async def _get_run_or_404(
     run_id: str,
     org_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
 ) -> WorkflowRun:
     """Fetch a WorkflowRun by ID, scoped to the org. Raises 404 if not found."""
     result = await session.exec(

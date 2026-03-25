@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X, Loader2, Key, ExternalLink } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
+import { useSession } from "next-auth/react";
 
 interface AvailableConnector {
     id: string;
@@ -22,15 +23,25 @@ export function OAuthConnectModal({
     onClose: () => void;
     onConnected: () => void;
 }) {
+    const { data: session } = useSession();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [apiKeyValues, setApiKeyValues] = useState<Record<string, string>>({});
 
     const handleOAuth = async () => {
+        const orgId = session?.user?.org_id;
+        if (!orgId) {
+            setError('No organization context found.');
+            return;
+        }
+
         setLoading(true);
         setError('');
         try {
-            const res = await apiFetch(`/api/connectors/${connector.id}/oauth/init`, { method: 'POST' });
+            const res = await apiFetch(`/api/connectors/${connector.id}/oauth/init`, { 
+                method: 'POST',
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            });
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || 'OAuth init failed');
             // Open OAuth in new tab
@@ -51,11 +62,18 @@ export function OAuthConnectModal({
     };
 
     const handleApiKeyInstall = async () => {
+        const orgId = session?.user?.org_id;
+        if (!orgId) {
+            setError('No organization context found.');
+            return;
+        }
+
         setLoading(true);
         setError('');
         try {
             const res = await apiFetch(`/api/connectors/${connector.id}/install`, {
                 method: 'POST',
+                headers: { 'X-ScopeSentinel-Org-ID': orgId },
                 body: JSON.stringify({ config: apiKeyValues }),
             });
             const data = await res.json();

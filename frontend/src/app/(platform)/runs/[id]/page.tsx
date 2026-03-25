@@ -14,8 +14,10 @@ import { ExecutionReplay } from "@/components/runs/execution-replay"
 import { ArrowLeft, Play, RefreshCw, SquareTerminal, Info, Activity } from "lucide-react"
 import Link from "next/link"
 import { apiGet } from "@/lib/api-client"
+import { useSession } from "next-auth/react"
 
 export default function RunDetailPage() {
+    const { data: session } = useSession()
     const params = useParams()
     const runId = params.id as string
 
@@ -25,12 +27,19 @@ export default function RunDetailPage() {
     const [error, setError] = useState<string | null>(null)
 
     const fetchData = async () => {
+        const orgId = session?.user?.org_id
+        if (!orgId) return
+
         try {
-            const data = await apiGet<any>(`/api/runs/${runId}`)
+            const data = await apiGet<any>(`/api/runs/${runId}`, {
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            } as any)
             setRun(data)
 
             if (data.workflow_id && !workflow) {
-                const wfData = await apiGet<any>(`/api/workflows/${data.workflow_id}`)
+                const wfData = await apiGet<any>(`/api/workflows/${data.workflow_id}`, {
+                    headers: { 'X-ScopeSentinel-Org-ID': orgId }
+                } as any)
                 setWorkflow(wfData)
             }
         } catch (e: any) {
@@ -41,10 +50,12 @@ export default function RunDetailPage() {
     }
 
     useEffect(() => {
-        fetchData()
-        const interval = setInterval(fetchData, 5000)
-        return () => clearInterval(interval)
-    }, [runId])
+        if (session?.user?.org_id) {
+            fetchData()
+            const interval = setInterval(fetchData, 5000)
+            return () => clearInterval(interval)
+        }
+    }, [runId, session])
 
     if (loading && !run) return <div className="p-8">Loading run details...</div>
     if (error) return <div className="p-8 text-destructive">Error: {error}</div>

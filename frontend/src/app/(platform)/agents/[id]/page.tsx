@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { AgentForm } from "@/components/agents/AgentForm"
 import { apiFetch } from "@/lib/api-client"
+import { useSession } from "next-auth/react"
 
 export default function EditAgentPage() {
+    const { data: session } = useSession()
     const params = useParams()
     const id = params.id as string
     const [agent, setAgent] = useState<any>(null)
@@ -16,8 +18,13 @@ export default function EditAgentPage() {
 
     useEffect(() => {
         const fetchAgent = async () => {
+            const orgId = session?.user?.org_id
+            if (!orgId) return
+
             try {
-                const res = await apiFetch(`/api/agents/${id}`)
+                const res = await apiFetch(`/api/agents/${id}`, {
+                    headers: { 'X-ScopeSentinel-Org-ID': orgId }
+                })
                 if (res.ok) {
                     setAgent(await res.json())
                 }
@@ -27,8 +34,10 @@ export default function EditAgentPage() {
                 setLoading(false)
             }
         }
-        fetchAgent()
-    }, [id])
+        if (session?.user?.org_id) {
+            fetchAgent()
+        }
+    }, [id, session])
 
     if (loading) return <div className="p-8">Loading Agent...</div>
     if (!agent) return <div className="p-8 text-destructive">Agent not found.</div>

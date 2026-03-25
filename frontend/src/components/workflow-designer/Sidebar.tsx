@@ -6,6 +6,7 @@ import {
     MessageSquare, Globe, Zap, ChevronDown, ChevronRight, PlugZap, Link2, Loader2
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { useSession } from 'next-auth/react';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -208,6 +209,7 @@ function IntegrationSection({
     onDragStart: (e: React.DragEvent, node: NodeDef, extra?: any) => void;
     onConnectClick: (connector: AvailableConnector) => void;
 }) {
+    const { data: session } = useSession();
     const [installed, setInstalled] = useState<InstalledConnector[]>([]);
     const [available, setAvailable] = useState<AvailableConnector[]>([]);
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -215,10 +217,13 @@ function IntegrationSection({
 
     useEffect(() => {
         const fetchConnectors = async () => {
+            const orgId = session?.user?.org_id;
+            if (!orgId) return;
+
             try {
                 const [insRes, avRes] = await Promise.all([
-                    apiFetch('/api/connectors/installed'),
-                    apiFetch('/api/connectors/available'),
+                    apiFetch('/api/connectors/installed', { headers: { 'X-ScopeSentinel-Org-ID': orgId } }),
+                    apiFetch('/api/connectors/available', { headers: { 'X-ScopeSentinel-Org-ID': orgId } }),
                 ]);
                 const insData = insRes.ok ? await insRes.json() : [];
                 const avData = avRes.ok ? await avRes.json() : [];
@@ -229,8 +234,10 @@ function IntegrationSection({
                 setLoading(false);
             }
         };
-        fetchConnectors();
-    }, []);
+        if (session?.user?.org_id) {
+            fetchConnectors();
+        }
+    }, [session]);
 
     const installedIds = new Set(installed.map(c => c.connector_id));
 

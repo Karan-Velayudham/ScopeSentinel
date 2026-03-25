@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { apiFetch } from "@/lib/api-client"
+import { useSession } from "next-auth/react"
 import { CapabilitiesDialog } from "./capabilities-dialog"
 
 const getIconForCategory = (category: string) => {
@@ -19,6 +20,7 @@ const getIconForCategory = (category: string) => {
 }
 
 export default function IntegrationsPage() {
+    const { data: session } = useSession()
     const [available, setAvailable] = useState<any[]>([])
     const [installed, setInstalled] = useState<any[]>([])
     const [oauthConnections, setOauthConnections] = useState<any[]>([])
@@ -30,11 +32,14 @@ export default function IntegrationsPage() {
     const [capsLoading, setCapsLoading] = useState(false)
 
     const fetchData = async () => {
+        const orgId = session?.user?.org_id
+        if (!orgId) return
+
         try {
             const [resAvail, resInst, resOauth] = await Promise.all([
-                apiFetch('/api/connectors/available'),
-                apiFetch('/api/connectors/installed'),
-                apiFetch('/api/oauth-connections'),
+                apiFetch('/api/connectors/available', { headers: { 'X-ScopeSentinel-Org-ID': orgId } }),
+                apiFetch('/api/connectors/installed', { headers: { 'X-ScopeSentinel-Org-ID': orgId } }),
+                apiFetch('/api/oauth-connections', { headers: { 'X-ScopeSentinel-Org-ID': orgId } }),
             ])
             setAvailable(await resAvail.json())
             setInstalled(await resInst.json())
@@ -46,7 +51,11 @@ export default function IntegrationsPage() {
         }
     }
 
-    useEffect(() => { fetchData() }, [])
+    useEffect(() => { 
+        if (session?.user?.org_id) {
+            fetchData() 
+        }
+    }, [session])
     useEffect(() => {
         // Poll for oauth changes or check localStorage
         const handleOauthUpdate = () => fetchData();
@@ -57,18 +66,19 @@ export default function IntegrationsPage() {
 
     const handleConnect = async (connector: any) => {
         const connectorId = connector.id;
+        const orgId = session?.user?.org_id;
+        if (!orgId) return;
+
         if (connector.auth_type === 'oauth') {
-            // Need org_id and user_id. For now, assume we can get from auth context or hardcode for dev.
-            // In a real app, use the current user's session.
-            const org_id = "org_123"; // dev-default
-            const user_id = "user_456"; // dev-default
-            const authUrl = `http://localhost:8005/api/connections/oauth/${connectorId}/authorize?org_id=${org_id}&user_id=${user_id}`;
+            const user_id = session?.user?.email || "unknown";
+            const authUrl = `http://localhost:8005/api/connections/oauth/${connectorId}/authorize?org_id=${orgId}&user_id=${user_id}`;
             window.location.href = authUrl;
             return;
         }
         try {
             const res = await apiFetch(`/api/connectors/${connectorId}/install`, {
                 method: 'POST',
+                headers: { 'X-ScopeSentinel-Org-ID': orgId },
                 body: JSON.stringify({ config: { token: "" } }),
             })
             if (res.ok) {
@@ -84,11 +94,19 @@ export default function IntegrationsPage() {
 
     // m-3 fix: Add disconnect/uninstall handler
     const handleDisconnect = async (connectorId: string) => {
+        const orgId = session?.user?.org_id;
+        if (!orgId) return;
+
         if (!confirm(`Remove ${connectorId} connection?`)) return
         try {
-            // If it's jira/oauth, we should also delete from oauth-connections
-            await apiFetch(`/api/oauth-connections/${connectorId}`, { method: 'DELETE' })
-            const res = await apiFetch(`/api/connectors/${connectorId}/uninstall`, { method: 'DELETE' })
+            await apiFetch(`/api/oauth-connections/${connectorId}`, { 
+                method: 'DELETE',
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            })
+            const res = await apiFetch(`/api/connectors/${connectorId}/uninstall`, { 
+                method: 'DELETE',
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            })
             if (res.ok || res.status === 204) {
                 fetchData()
             } else {
@@ -101,18 +119,20 @@ export default function IntegrationsPage() {
     }
 
     const handleViewCapabilities = async (connector: any) => {
+        const orgId = session?.user?.org_id;
+        if (!orgId) return;
+
         setSelectedConnector(connector)
         setIsCapModalOpen(true)
         setCapsLoading(true)
         try {
-            // Currently adapter-service /api/tools returns all tools.
-            // We'll filter for this connector's tools.
-            const res = await apiFetch(`/api/tools?org_id=org_123`) 
+            const res = await apiFetch(`/api/tools?org_id=${orgId}`, {
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            }) 
             const data = await res.json()
             const tools = data.tools || []
-            // The adapter-service registers tools with server_name 'oauth_{provider}_{org_id}'
             const connectorTools = tools.filter((t: any) => 
-                t.server_name === `oauth_${connector.id}_org_123` || 
+                t.server_name === `oauth_${connector.id}_${orgId}` || 
                 t.server_name.includes(connector.id)
             )
             setCapabilities(connectorTools)

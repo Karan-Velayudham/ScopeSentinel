@@ -6,7 +6,7 @@ from sqlmodel import select, func
 
 from auth.api_keys import CurrentUserDep
 from db.models import Agent
-from db.session import SessionDep
+from db.session import SessionDep, TenantSessionDep
 from schemas import (
     PaginationMeta,
     AgentCreateRequest,
@@ -41,7 +41,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
 @router.post("/", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
 async def create_agent(
     body: AgentCreateRequest,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> AgentResponse:
     agent = Agent(
@@ -61,7 +61,7 @@ async def create_agent(
 
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -89,7 +89,7 @@ async def list_agents(
 @router.get("/{agent_id}", response_model=AgentResponse)
 async def get_agent(
     agent_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> AgentResponse:
     agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == current_user.org_id))).first()
@@ -101,7 +101,7 @@ async def get_agent(
 async def update_agent(
     agent_id: str,
     body: AgentUpdateRequest,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> AgentResponse:
     agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == current_user.org_id))).first()
@@ -139,7 +139,7 @@ async def update_agent(
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(
     agent_id: str,
-    session: SessionDep,
+    session: TenantSessionDep,
     current_user: CurrentUserDep,
 ) -> None:
     agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == current_user.org_id))).first()

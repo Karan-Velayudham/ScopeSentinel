@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet } from "@/lib/api-client";
+import { useSession } from "next-auth/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -24,14 +25,20 @@ interface UsageData {
 }
 
 export default function BillingPage() {
+    const { data: session } = useSession();
     const [usage, setUsage] = useState<UsageData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const fetchUsage = async () => {
+        const orgId = session?.user?.org_id;
+        if (!orgId) return;
+
         setLoading(true);
         try {
-            const data = await apiGet<UsageData>("/metering/usage?org_id=global"); // Using global or default org for now
+            const data = await apiGet<UsageData>(`/metering/usage?org_id=${orgId}`, {
+                headers: { 'X-ScopeSentinel-Org-ID': orgId }
+            });
             setUsage(data);
             setError(null);
         } catch (e: any) {
@@ -42,8 +49,10 @@ export default function BillingPage() {
     };
 
     useEffect(() => {
-        fetchUsage();
-    }, []);
+        if (session?.user?.org_id) {
+            fetchUsage();
+        }
+    }, [session]);
 
     const getBreakdownStat = (type: string, field: "count" | "total_tokens") => {
         if (!usage) return 0;

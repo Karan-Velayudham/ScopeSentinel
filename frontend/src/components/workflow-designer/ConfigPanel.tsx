@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, Plus, Trash2, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
+import { useSession } from "next-auth/react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,12 +82,16 @@ function McpToolChecklist({ selectedTools, onChange }: {
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(true);
 
+    const { data: session } = useSession();
     useEffect(() => {
-        apiFetch('/api/connectors/installed')
+        const orgId = session?.user?.org_id;
+        if (!orgId) return;
+
+        apiFetch('/api/connectors/installed', { headers: { 'X-ScopeSentinel-Org-ID': orgId } })
             .then(r => r.json())
             .then(data => { setConnectors(data); setLoading(false); })
             .catch(() => setLoading(false));
-    }, []);
+    }, [session]);
 
     const toggle = (toolKey: string) => {
         onChange(
@@ -142,10 +147,17 @@ function McpToolChecklist({ selectedTools, onChange }: {
 // ─── Agent selector ───────────────────────────────────────────────────────────
 
 function AgentSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    const { data: session } = useSession();
     const [agents, setAgents] = useState<any[]>([]);
     useEffect(() => {
-        apiFetch('/api/agents').then(r => r.json()).then(d => setAgents(d.items || [])).catch(() => { });
-    }, []);
+        const orgId = session?.user?.org_id;
+        if (!orgId) return;
+
+        apiFetch('/api/agents', { headers: { 'X-ScopeSentinel-Org-ID': orgId } })
+            .then(r => r.json())
+            .then(d => setAgents(d.items || []))
+            .catch(() => { });
+    }, [session]);
     return (
         <SelectInput
             value={value || 'none'}

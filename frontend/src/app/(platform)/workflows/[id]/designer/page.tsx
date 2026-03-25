@@ -8,8 +8,10 @@ import { Node, Edge } from '@xyflow/react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api-client';
+import { useSession } from 'next-auth/react';
 
 export default function WorkflowDesignerPage() {
+    const { data: session } = useSession();
     const params = useParams();
     const id = params.id as string;
     const router = useRouter();
@@ -22,6 +24,9 @@ export default function WorkflowDesignerPage() {
     const [workflowStatus, setWorkflowStatus] = useState('draft');
 
     useEffect(() => {
+        const orgId = session?.user?.org_id;
+        if (!orgId && id !== 'new') return;
+
         if (id === 'new') {
             const { nodes, edges } = yamlToWorkflowGraph('');
             setInitialNodes(nodes);
@@ -30,7 +35,9 @@ export default function WorkflowDesignerPage() {
             return;
         }
 
-        apiFetch(`/api/workflows/${id}`)
+        apiFetch(`/api/workflows/${id}`, {
+            headers: { 'X-ScopeSentinel-Org-ID': orgId! }
+        })
             .then(res => {
                 if (!res.ok) throw new Error("Failed to fetch workflow");
                 return res.json();
@@ -48,9 +55,15 @@ export default function WorkflowDesignerPage() {
                 console.error(err);
                 setLoading(false);
             });
-    }, [id]);
+    }, [id, session]);
 
     const handleSave = async (nodes: Node[], edges: Edge[], name: string) => {
+        const orgId = session?.user?.org_id;
+        if (!orgId) {
+            alert("No organization context found.");
+            return;
+        }
+
         const yamlContent = workflowGraphToYaml(name, workflowDesc, nodes, edges);
         const method = id === 'new' ? 'POST' : 'PUT';
         const url = id === 'new' ? `/api/workflows/` : `/api/workflows/${id}`;
@@ -62,6 +75,7 @@ export default function WorkflowDesignerPage() {
         try {
             const res = await apiFetch(url, {
                 method,
+                headers: { 'X-ScopeSentinel-Org-ID': orgId },
                 body: JSON.stringify(payload),
             });
 

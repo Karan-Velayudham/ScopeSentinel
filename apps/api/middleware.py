@@ -38,9 +38,9 @@ class TenantMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        tenant_id = request.headers.get("X-Tenant-Id")
-        if tenant_id:
-            request.state.tenant_id = tenant_id.replace("-", "_")
+        org_id = request.headers.get("X-ScopeSentinel-Org-ID")
+        if org_id:
+            request.state.tenant_id = org_id.replace("-", "_")
         else:
             request.state.tenant_id = None
 
