@@ -13,13 +13,18 @@ class JiraAdapter(BaseOAuthAdapter):
 
     async def get_authorization_url(self, state: str, redirect_uri: str) -> str:
         scopes = "read:jira-work write:jira-work read:jira-user offline_access"
+        import urllib.parse
+        scopes_encoded = urllib.parse.quote(scopes)
+        redirect_encoded = urllib.parse.quote(redirect_uri)
+        client_id_encoded = urllib.parse.quote(self.client_id or "")
+        
         return (
             f"https://auth.atlassian.com/authorize"
             f"?audience=api.atlassian.com"
-            f"&client_id={self.client_id}"
-            f"&scope={scopes}"
-            f"&redirect_uri={redirect_uri}"
-            f"&state={state}"
+            f"&client_id={client_id_encoded}"
+            f"&scope={scopes_encoded}"
+            f"&redirect_uri={redirect_encoded}"
+            f"&state={urllib.parse.quote(state)}"
             f"&response_type=code"
             f"&prompt=consent"
         )

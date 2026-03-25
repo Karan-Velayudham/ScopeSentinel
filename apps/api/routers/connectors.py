@@ -156,12 +156,13 @@ async def oauth_init(
     org_id = getattr(request.state, "org_id", None) or current_user.org_id
     scope_str = " ".join(oauth_cfg.scopes)
     extra_qs = "&".join(f"{k}={v}" for k, v in oauth_cfg.extra_params.items())
+    import urllib.parse
     authorization_url = (
         f"{oauth_cfg.auth_url}"
-        f"?client_id={client_id}"
-        f"&redirect_uri={callback_url}"
-        f"&scope={scope_str}"
-        f"&state={state}___{connector_id}___{org_id}"
+        f"?client_id={urllib.parse.quote(client_id)}"
+        f"&redirect_uri={urllib.parse.quote(callback_url)}"
+        f"&scope={urllib.parse.quote(scope_str)}"
+        f"&state={urllib.parse.quote(f'{state}___{connector_id}___{org_id}')}"
         f"&response_type=code"
         + (f"&{extra_qs}" if extra_qs else "")
     )

@@ -129,6 +129,25 @@ services:
       temporal:
         condition: service_started
 
+  # ── Adapter Service (Remote MCP) ─────────────────────────────────────────────
+  adapter-service:
+    build:
+      context: ./apps/adapter-service
+      dockerfile: Dockerfile
+    image: scopesentinel-adapter-service:latest
+    container_name: scopesentinel-adapter-service
+    env_file:
+      - .env
+    environment:
+      API_URL: "http://api:8000"
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "8005:8005"
+    depends_on:
+      api:
+        condition: service_started
+
   # ── Temporal Server ──────────────────────────────────────────────────────────
   temporal:
     image: temporalio/auto-setup:latest

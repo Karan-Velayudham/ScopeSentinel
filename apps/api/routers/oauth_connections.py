@@ -140,10 +140,23 @@ async def internal_save_connection(
     org_id: str = Query(...),
     user_id: str = Query(...)
 ):
-    """Internal endpoint for adapter-service to save a token."""
+    from db.models import User
+    
+    # Resolve user_id: if it looks like an email, find the internal UUID
+    actual_user_id = user_id
+    if "@" in user_id:
+        user_query = select(User).where(User.email == user_id)
+        user_obj = (await session.exec(user_query)).first()
+        if user_obj:
+            actual_user_id = user_obj.id
+        else:
+            # If user not found by email, this might be a new user or invalid email
+            # We should probably raise an error or create the user, but for now 404
+            raise HTTPException(status_code=404, detail=f"User with email {user_id} not found")
+
     query = select(OAuthConnection).where(
         OAuthConnection.org_id == org_id,
-        OAuthConnection.user_id == user_id,
+        OAuthConnection.user_id == actual_user_id,
         OAuthConnection.provider == body.provider
     )
     existing = (await session.exec(query)).first()
@@ -163,7 +176,7 @@ async def internal_save_connection(
     else:
         new_conn = OAuthConnection(
             org_id=org_id,
-            user_id=user_id,
+            user_id=actual_user_id,
             provider=body.provider,
             access_token_encrypted=enc_access,
             refresh_token_encrypted=enc_refresh,
