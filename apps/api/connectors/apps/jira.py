@@ -7,7 +7,7 @@ class JiraConnector(BaseConnector):
     oauth_config = OAuthConfig(
         auth_url="https://auth.atlassian.com/authorize",
         token_url="https://auth.atlassian.com/oauth/token",
-        scopes=["read:jira-work", "write:jira-work", "read:jira-user"],
+        scopes=["read:jira-work", "write:jira-work", "read:jira-user", "offline_access"],
         client_id_env="JIRA_CLIENT_ID",
         client_secret_env="JIRA_CLIENT_SECRET",
         extra_params={"audience": "api.atlassian.com", "prompt": "consent"},
