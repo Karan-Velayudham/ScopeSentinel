@@ -65,6 +65,13 @@ class UserRole(str, enum.Enum):
     VIEWER = "viewer"
 
 
+class TenantStatus(str, enum.Enum):
+    PROVISIONING = "provisioning"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    DEPROVISIONED = "deprovisioned"
+
+
 # ---------------------------------------------------------------------------
 # Organisation
 # ---------------------------------------------------------------------------
@@ -75,7 +82,10 @@ class Org(SQLModel, table=True):
     id: str = Field(default_factory=_new_uuid, primary_key=True)
     name: str = Field(index=True, unique=True)
     slug: str = Field(index=True, unique=True)
+    status: TenantStatus = Field(default=TenantStatus.PROVISIONING, index=True)
+    tenant_config: Optional[str] = Field(default=None) # JSON string
     created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 
     # Relationships
     users: list["User"] = Relationship(back_populates="org")
