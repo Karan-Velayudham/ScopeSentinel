@@ -24,10 +24,10 @@ def _new_uuid() -> str:
 
 
 class TenantStatus(str, enum.Enum):
-    PROVISIONING = "provisioning"
-    ACTIVE = "active"
-    SUSPENDED = "suspended"
-    DEPROVISIONED = "deprovisioned"
+    PROVISIONING = "PROVISIONING"
+    ACTIVE = "ACTIVE"
+    SUSPENDED = "SUSPENDED"
+    DEPROVISIONED = "DEPROVISIONED"
 
 
 class Org(SQLModel, table=True):

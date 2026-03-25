@@ -59,17 +59,17 @@ class HitlAction(str, enum.Enum):
 
 
 class UserRole(str, enum.Enum):
-    ADMIN = "admin"
-    DEVELOPER = "developer"
-    REVIEWER = "reviewer"
-    VIEWER = "viewer"
+    ADMIN = "ADMIN"
+    DEVELOPER = "DEVELOPER"
+    REVIEWER = "REVIEWER"
+    VIEWER = "VIEWER"
 
 
 class TenantStatus(str, enum.Enum):
-    PROVISIONING = "provisioning"
-    ACTIVE = "active"
-    SUSPENDED = "suspended"
-    DEPROVISIONED = "deprovisioned"
+    PROVISIONING = "PROVISIONING"
+    ACTIVE = "ACTIVE"
+    SUSPENDED = "SUSPENDED"
+    DEPROVISIONED = "DEPROVISIONED"
 
 
 # ---------------------------------------------------------------------------
