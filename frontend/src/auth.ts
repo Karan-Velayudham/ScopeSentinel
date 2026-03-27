@@ -78,6 +78,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (token.org_id) {
                 session.user.org_id = token.org_id as string;
             }
+            
+            // Generate a backend-compatible JWT using the secret
+            try {
+                const { SignJWT } = await import('jose');
+                const secretString = process.env.AUTH_SECRET || "dev-secret-123";
+                const secret = new TextEncoder().encode(secretString);
+                const backendToken = await new SignJWT({ 
+                    email: session.user.email,
+                    org_id: session.user.org_id,
+                    name: session.user.name
+                })
+                .setProtectedHeader({ alg: 'HS256' })
+                .setIssuedAt()
+                .setExpirationTime('24h')
+                .sign(secret);
+                
+                (session as any).accessToken = backendToken;
+            } catch (e) {
+                console.error("Failed to generate backend token", e);
+            }
+            
             return session;
         },
     },

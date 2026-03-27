@@ -7,7 +7,6 @@ const AUDIT_API_BASE = process.env.NEXT_PUBLIC_AUDIT_URL || 'http://localhost:80
 const METERING_API_BASE = process.env.NEXT_PUBLIC_METERING_URL || 'http://localhost:8004'
 const ADAPTER_SERVICE_BASE = process.env.NEXT_PUBLIC_ADAPTER_URL || 'http://localhost:8005'
 
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'dev-admin-api-key-1'
 
 function getBaseUrlForPath(path: string): string {
     if (path.startsWith('/audit')) return AUDIT_API_BASE;
@@ -19,10 +18,8 @@ function getBaseUrlForPath(path: string): string {
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
     const baseUrl = getBaseUrlForPath(path);
     
-    // Extract orgId from custom header if present, or just pass it through
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'X-Api-Key': API_KEY,
         ...Object.fromEntries(Object.entries(options.headers || {}) as [string, string][]),
     };
 

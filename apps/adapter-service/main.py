@@ -2,7 +2,7 @@ import uvicorn
 from fastapi import FastAPI
 import structlog
 
-from routers import tools, connections, oauth
+from routers import tools, connections, oauth, connectors
 from core.connection_manager import connection_manager
 
 logger = structlog.get_logger()
@@ -22,6 +22,7 @@ app.add_middleware(
 app.include_router(tools.router)
 app.include_router(connections.router)
 app.include_router(oauth.router)
+app.include_router(connectors.router)
 
 @app.on_event("shutdown")
 async def shutdown_event():

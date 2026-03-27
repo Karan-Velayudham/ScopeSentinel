@@ -10,16 +10,24 @@ import { apiGet, apiPost, apiPatch, apiDelete, apiFetch } from "@/lib/api-client
 export function useApi() {
     const { data: session } = useSession()
     const orgId = session?.user?.org_id
+    const token = (session as any)?.accessToken
 
-    const withOrgHeader = (options: RequestInit = {}) => {
-        if (!orgId) return options
+    const withAuth = (options: RequestInit = {}) => {
+        const headers: Record<string, string> = {
+            ...(options.headers as Record<string, string> || {}),
+        }
+
+        if (orgId) {
+            headers['X-ScopeSentinel-Org-ID'] = orgId
+        }
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`
+        }
         
         return {
             ...options,
-            headers: {
-                ...options.headers,
-                'X-ScopeSentinel-Org-ID': orgId
-            }
+            headers
         }
     }
 
@@ -27,18 +35,18 @@ export function useApi() {
         session,
         orgId,
         fetch: (path: string, options?: RequestInit) => 
-            apiFetch(path, withOrgHeader(options)),
+            apiFetch(path, withAuth(options)),
         
         get: <T>(path: string, options?: RequestInit) => 
-            apiGet<T>(path, withOrgHeader(options)),
+            apiGet<T>(path, withAuth(options)),
             
         post: <T>(path: string, body: unknown, options?: RequestInit) => 
-            apiPost<T>(path, body, withOrgHeader(options)),
+            apiPost<T>(path, body, withAuth(options)),
             
         patch: <T>(path: string, body: unknown, options?: RequestInit) => 
-            apiPatch<T>(path, body, withOrgHeader(options)),
+            apiPatch<T>(path, body, withAuth(options)),
             
         delete: (path: string, options?: RequestInit) => 
-            apiDelete(path, withOrgHeader(options)),
+            apiDelete(path, withAuth(options)),
     }
 }

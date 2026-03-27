@@ -1,14 +1,17 @@
 """
-auth/api_keys.py — API key authentication dependency (Epic 1.4.3)
+auth/api_keys.py — JWT session authentication dependency (Epic 1.4.3)
 
-Verifies the X-Api-Key header against SHA-256-hashed keys stored in the DB.
+Verifies the Authorization: Bearer <token> header (signed by Auth.js/jose)
+using the shared AUTH_SECRET.
 """
 
+import os
 from typing import Annotated, Optional
 
 import structlog
 from fastapi import Depends, HTTPException, Security, status, Request
-from fastapi.security import APIKeyHeader
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
 
 from db.models import User
 from db.session import SessionDep
@@ -16,48 +19,57 @@ from sqlmodel import select
 
 logger = structlog.get_logger(__name__)
 
-_api_key_header = APIKeyHeader(name="X-Api-Key", auto_error=False)
+# Use AUTH_SECRET from environment, matching the frontend
+AUTH_SECRET = os.environ.get("AUTH_SECRET", "dev-secret-123")
+ALGORITHM = "HS256"
 
-
-async def _get_user_by_api_key(
-    raw_key: str,
-    session: SessionDep,
-) -> Optional[User]:
-    """Look up a user by their hashed API key. Returns None if not found."""
-    hashed = User.hash_api_key(raw_key)
-    result = await session.exec(select(User).where(User.hashed_api_key == hashed))
-    return result.first()
-
+security = HTTPBearer()
 
 async def get_current_user(
     request: Request,
-    api_key: Annotated[Optional[str], Security(_api_key_header)],
+    auth: Annotated[HTTPAuthorizationCredentials, Security(security)],
     session: SessionDep,
 ) -> User:
     """
-    FastAPI dependency — resolves the current user from the X-Api-Key header.
-
-    Phase 1: API key only.
-    Phase 2+: add JWT fallback from Keycloak.
-
-    Raises HTTP 401 if no valid credential is provided.
+    FastAPI dependency — resolves the current user from the JWT Bearer token.
+    Raises HTTP 401 if no valid token is provided.
     """
-    if api_key:
-        user = await _get_user_by_api_key(api_key, session)
-        if user:
-            logger.bind(user_id=user.id, auth_method="api_key")
-            # Set request.state.tenant_id and org_id if not already set by middleware header
-            if not getattr(request.state, "org_id", None):
-                request.state.org_id = user.org_id
-            if not getattr(request.state, "tenant_id", None):
-                request.state.tenant_id = user.org_id.replace("-", "_")
-            return user
+    token = auth.credentials
+    try:
+        # Decode and verify the JWT
+        payload = jwt.decode(token, AUTH_SECRET, algorithms=[ALGORITHM])
+        email: str = payload.get("email")
+        if email is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload: missing email",
+            )
+    except JWTError as e:
+        logger.error("auth.jwt_validation_failed", error=str(e), token_preview=token[:10] + "...")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Could not validate credentials: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or missing API key. Pass X-Api-Key header.",
-        headers={"WWW-Authenticate": "ApiKey"},
-    )
+    # Resolve user from DB by email
+    result = await session.exec(select(User).where(User.email == email))
+    user = result.first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    # Set request state for downstream use
+    request.state.user_id = user.id
+    if not getattr(request.state, "org_id", None):
+        request.state.org_id = user.org_id
+        request.state.tenant_id = user.org_id.replace("-", "_")
+
+    logger.bind(user_id=user.id, email=user.email, auth_method="jwt")
+    return user
 
 
 # Annotated type alias — use in route handlers for clean, reusable injection

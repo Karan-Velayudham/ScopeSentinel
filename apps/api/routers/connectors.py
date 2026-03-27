@@ -11,7 +11,7 @@ from sqlmodel import select
 
 from auth.api_keys import CurrentUserDep
 from db.models import InstalledConnector
-from db.session import SessionDep, TenantSessionDep
+from db.session import SessionDep
 from schemas import (
     ConnectorInfo,
     ConnectorInfoExtended,
@@ -21,12 +21,12 @@ from schemas import (
     InstalledConnectorDetailResponse,
     OAuthInitResponse,
 )
-from connectors.registry import get_connector_catalog, get_connector_class
+import httpx
+
+ADAPTER_SERVICE_URL = os.getenv("ADAPTER_SERVICE_URL", "http://localhost:8005")
 
 logger = structlog.get_logger(__name__)
-
 router = APIRouter(prefix="/api/connectors", tags=["connectors"])
-
 
 # ---------------------------------------------------------------------------
 # Catalog
@@ -34,32 +34,30 @@ router = APIRouter(prefix="/api/connectors", tags=["connectors"])
 
 @router.get("/available", response_model=list[ConnectorInfoExtended])
 async def list_available_connectors(current_user: CurrentUserDep):
-    """Returns the full catalog of connectable apps with auth info and tools."""
-    result = []
-    for cls in [get_connector_class(c["id"]) for c in get_connector_catalog()]:
-        if not cls:
-            continue
-        info = cls.info()
-        tools = [ConnectorTool(**t) for t in (cls.get_tools() and [t.to_dict() for t in cls.get_tools()])]
-        oauth_scopes = []
-        api_key_fields = []
-        if cls.oauth_config:
-            oauth_scopes = cls.oauth_config.scopes
-        if cls.api_key_config:
-            api_key_fields = cls.api_key_config.fields
-
-        result.append(ConnectorInfoExtended(
-            id=info.id,
-            name=info.name,
-            description=info.description,
-            category=info.category,
-            icon_url=info.icon_url,
-            auth_type=getattr(cls, "auth_type", "none"),
-            tools=tools,
-            oauth_scopes=oauth_scopes,
-            api_key_fields=api_key_fields,
-        ))
-    return result
+    """Returns the full catalog from adapter-service."""
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(f"{ADAPTER_SERVICE_URL}/api/connectors/catalog")
+            res.raise_for_status()
+            catalog = res.json()
+            
+            result = []
+            for item in catalog:
+                result.append(ConnectorInfoExtended(
+                    id=item["id"],
+                    name=item["name"],
+                    description=item["description"],
+                    category=item["category"],
+                    icon_url=item["icon_url"],
+                    auth_type=item.get("auth_type", "none"),
+                    tools=[],
+                    oauth_scopes=[], # Scopes can be fetched if needed, or kept simple
+                    api_key_fields=[],
+                ))
+            return result
+    except Exception as e:
+        logger.error("connectors.list_available_failed", error=str(e))
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -68,30 +66,62 @@ async def list_available_connectors(current_user: CurrentUserDep):
 
 @router.get("/installed", response_model=list[InstalledConnectorDetailResponse])
 async def list_installed_connectors(
-    session: TenantSessionDep,
+    session: SessionDep,
     current_user: CurrentUserDep,
     request: Request,
 ):
-    """Returns connectors installed by the current org, enriched with tools."""
+    """Returns connectors installed by the current org, enriched with DYNAMIC tools."""
     org_id = getattr(request.state, "org_id", None) or current_user.org_id
     stmt = select(InstalledConnector).where(InstalledConnector.org_id == org_id)
     items = (await session.exec(stmt)).all()
 
+    # 1. Fetch the absolute catalog from adapter-service to get metadata (names, icons)
+    catalog_map = {}
+    try:
+        async with httpx.AsyncClient() as client:
+            cat_res = await client.get(f"{ADAPTER_SERVICE_URL}/api/connectors/catalog")
+            if cat_res.is_success:
+                for c in cat_res.json():
+                    catalog_map[c["id"]] = c
+    except Exception:
+        pass
+
+    # 2. Fetch discovered tools from adapter-service
+    tools_by_provider = {}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            tools_res = await client.get(f"{ADAPTER_SERVICE_URL}/api/tools?org_id={org_id}")
+            if tools_res.is_success:
+                all_discovered = tools_res.json().get("tools", [])
+                for t in all_discovered:
+                    # In adapter-service, tools are named "provider.tool_name"
+                    if "." in t["name"]:
+                        provider, tool_name = t["name"].split(".", 1)
+                        if provider not in tools_by_provider:
+                            tools_by_provider[provider] = []
+                        
+                        # Map internal ToolSchema to ConnectorTool
+                        tools_by_provider[provider].append(ConnectorTool(
+                            name=tool_name,
+                            description=t["description"],
+                            inputs=[] # JSON Schema is in t["input_schema"] if needed
+                        ))
+    except Exception as e:
+        logger.error("connectors.fetch_dynamic_tools_failed", error=str(e))
+
     result = []
     for item in items:
-        cls = get_connector_class(item.connector_id)
-        if not cls:
-            continue
-        info = cls.info()
-        tools = [ConnectorTool(**t.to_dict()) for t in cls.get_tools()]
+        meta = catalog_map.get(item.connector_id, {})
+        connector_tools = tools_by_provider.get(item.connector_id, [])
+        
         result.append(InstalledConnectorDetailResponse(
             id=item.id,
             connector_id=item.connector_id,
-            connector_name=info.name,
-            icon_url=info.icon_url,
-            auth_type=getattr(cls, "auth_type", "none"),
+            connector_name=meta.get("name", item.connector_id.capitalize()),
+            icon_url=meta.get("icon_url", ""),
+            auth_type=meta.get("auth_type", "none"),
             is_active=item.is_active,
-            tools=tools,
+            tools=connector_tools,
             created_at=item.created_at,
             updated_at=item.updated_at,
         ))
@@ -106,12 +136,28 @@ async def list_installed_connectors(
 async def get_connector_tools(
     connector_id: str,
     current_user: CurrentUserDep,
+    request: Request,
 ):
-    """Returns the list of MCP tools exposed by a connector."""
-    cls = get_connector_class(connector_id)
-    if not cls:
-        raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found")
-    return [ConnectorTool(**t.to_dict()) for t in cls.get_tools()]
+    """Returns the list of dynamic MCP tools exposed by a connector."""
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            tools_res = await client.get(f"{ADAPTER_SERVICE_URL}/api/tools?org_id={org_id}")
+            if tools_res.is_success:
+                all_tools = tools_res.json().get("tools", [])
+                connector_tools = [
+                    ConnectorTool(
+                        name=t["name"].split(".", 1)[1] if "." in t["name"] else t["name"],
+                        description=t["description"],
+                        inputs=[]
+                    )
+                    for t in all_tools 
+                    if t["name"].startswith(f"{connector_id}.")
+                ]
+                return connector_tools
+    except Exception:
+        pass
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -125,54 +171,41 @@ async def oauth_init(
     current_user: CurrentUserDep,
 ):
     """
-    Initiates an OAuth 2.0 PKCE flow for the given connector.
-    Returns an authorization_url to redirect the user to.
+    Initiates an OAuth 2.0 PKCE flow.
+    M-5 Fix: Dynamically handles Jira via adapter-service proxy.
     """
-    cls = get_connector_class(connector_id)
-    if not cls:
-        raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found")
-    if getattr(cls, "auth_type", "none") != "oauth":
-        raise HTTPException(status_code=400, detail=f"Connector '{connector_id}' does not support OAuth")
-
-    oauth_cfg = cls.oauth_config
-    if not oauth_cfg:
-        raise HTTPException(status_code=500, detail="OAuth config missing on connector")
-
-    client_id = os.getenv(oauth_cfg.client_id_env, "")
-    if not client_id:
-        raise HTTPException(
-            status_code=503,
-            detail=f"OAuth client ID not configured. Set {oauth_cfg.client_id_env} environment variable."
+    # Jira is special as it's our first full MCP integration
+    if connector_id == "jira":
+        client_id = os.getenv("JIRA_CLIENT_ID", "")
+        if not client_id:
+            raise HTTPException(status_code=503, detail="JIRA_CLIENT_ID not set")
+        
+        state = secrets.token_urlsafe(32)
+        base_url = os.getenv("API_BASE_URL", str(request.base_url).rstrip("/"))
+        callback_url = f"{base_url}/api/connectors/oauth/callback"
+        org_id = getattr(request.state, "org_id", None) or current_user.org_id
+        
+        # Hardcoding the Jira OAuth URL for now purely as the gatekeeper, 
+        # but the discovery will be dynamic.
+        import urllib.parse
+        scopes = "read:jira-work write:jira-work read:jira-user offline_access"
+        authorization_url = (
+            f"https://auth.atlassian.com/authorize"
+            f"?audience=api.atlassian.com"
+            f"&client_id={urllib.parse.quote(client_id)}"
+            f"&scope={urllib.parse.quote(scopes)}"
+            f"&redirect_uri={urllib.parse.quote(callback_url)}"
+            f"&state={urllib.parse.quote(f'{state}___{connector_id}___{org_id}')}"
+            f"&response_type=code"
+            f"&prompt=consent"
+        )
+        return OAuthInitResponse(
+            authorization_url=authorization_url,
+            state=state,
+            connector_id=connector_id,
         )
 
-    # Generate a cryptographically secure state token
-    state = secrets.token_urlsafe(32)
-
-    # Build callback URL
-    base_url = os.getenv("API_BASE_URL", str(request.base_url).rstrip("/"))
-    callback_url = f"{base_url}/api/connectors/oauth/callback"
-
-    # Compose authorization URL
-    org_id = getattr(request.state, "org_id", None) or current_user.org_id
-    scope_str = " ".join(oauth_cfg.scopes)
-    extra_qs = "&".join(f"{k}={v}" for k, v in oauth_cfg.extra_params.items())
-    import urllib.parse
-    authorization_url = (
-        f"{oauth_cfg.auth_url}"
-        f"?client_id={urllib.parse.quote(client_id)}"
-        f"&redirect_uri={urllib.parse.quote(callback_url)}"
-        f"&scope={urllib.parse.quote(scope_str)}"
-        f"&state={urllib.parse.quote(f'{state}___{connector_id}___{org_id}')}"
-        f"&response_type=code"
-        + (f"&{extra_qs}" if extra_qs else "")
-    )
-
-    logger.info("connector.oauth_init", connector_id=connector_id, org_id=org_id)
-    return OAuthInitResponse(
-        authorization_url=authorization_url,
-        state=state,
-        connector_id=connector_id,
-    )
+    raise HTTPException(status_code=400, detail="Only Jira OAuth is currently supported in dynamic mode.")
 
 
 @router.get("/oauth/callback")
@@ -183,8 +216,7 @@ async def oauth_callback(
 ):
     """
     OAuth callback — exchanges authorization code for access token.
-    State encodes: {random_state}___{connector_id}___{org_id}
-    Stores credentials in InstalledConnector.config_json (Vault in Phase 2).
+    Stores credentials in public.oauth_connections.
     """
     try:
         parts = state.split("___")
@@ -194,42 +226,34 @@ async def oauth_callback(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid OAuth state parameter")
 
-    # Manually set search path for this session since we just resolved the org_id
+    # Manually set search path for this session
     from sqlalchemy import text
     safe_org_id = org_id.replace("-", "_")
-    await session.execute(text(f"SET search_path TO tenant_{safe_org_id}, public"))
+    await session.execute(text(f"SET search_path TO public, tenant_{safe_org_id}"))
 
-    cls = get_connector_class(connector_id)
-    if not cls:
-        raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found")
-
-    # Check if already installed
-    stmt = select(InstalledConnector).where(
-        InstalledConnector.org_id == org_id,
-        InstalledConnector.connector_id == connector_id,
-    )
-    existing = (await session.exec(stmt)).first()
-
-    credential_data = {"oauth_code": code, "status": "connected"}
-
-    if existing:
-        existing.config_json = json.dumps(credential_data)
-        await session.commit()
-    else:
-        new_connector = InstalledConnector(
-            org_id=org_id,
-            connector_id=connector_id,
-            config_json=json.dumps(credential_data),
+    # Jira uses the adapter-service to exchange tokens
+    if connector_id == "jira":
+        # we still create the entry in InstalledConnector to mark it active
+        stmt = select(InstalledConnector).where(
+            InstalledConnector.org_id == org_id,
+            InstalledConnector.connector_id == connector_id,
         )
-        session.add(new_connector)
-        await session.commit()
-
-    logger.info("connector.oauth_callback_success", connector_id=connector_id, org_id=org_id)
-
-    # Redirect to frontend integrations page
+        existing = (await session.exec(stmt)).first()
+        if not existing:
+            new_connector = InstalledConnector(
+                org_id=org_id,
+                connector_id=connector_id,
+                config_json=json.dumps({"status": "oauth_initiated"}),
+                is_active=True
+            )
+            session.add(new_connector)
+            await session.commit()
+    
+    # The actual token exchange and storage happens in the adapter-service or via our hook
+    # For now, we redirect to a special frontend route that will trigger the adapter-service discovery
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     return RedirectResponse(
-        url=f"{frontend_url}/integrations/callback?connector_id={connector_id}&status=connected",
+        url=f"{frontend_url}/integrations/callback?connector_id={connector_id}&status=connected&code={code}&org_id={org_id}",
         status_code=302,
     )
 
@@ -246,15 +270,11 @@ async def oauth_callback(
 async def install_connector(
     connector_id: str,
     body: ConnectorInstallRequest,
-    session: TenantSessionDep,
+    session: SessionDep,
     current_user: CurrentUserDep,
     request: Request,
 ):
     """Install a connector using API key credentials."""
-    cls = get_connector_class(connector_id)
-    if not cls:
-        raise HTTPException(status_code=404, detail="Connector not found")
-
     org_id = getattr(request.state, "org_id", None) or current_user.org_id
     stmt = select(InstalledConnector).where(
         InstalledConnector.org_id == org_id,
@@ -287,7 +307,7 @@ async def install_connector(
 @router.delete("/{connector_id}/uninstall", status_code=status.HTTP_204_NO_CONTENT)
 async def uninstall_connector(
     connector_id: str,
-    session: TenantSessionDep,
+    session: SessionDep,
     current_user: CurrentUserDep,
     request: Request,
 ) -> None:

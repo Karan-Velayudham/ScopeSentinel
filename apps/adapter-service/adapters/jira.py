@@ -14,6 +14,16 @@ class JiraAdapter(BaseOAuthAdapter):
         self.client_id = os.environ.get("JIRA_CLIENT_ID")
         self.client_secret = os.environ.get("JIRA_CLIENT_SECRET")
 
+    def info(self) -> Dict[str, Any]:
+        return {
+            "id": "jira",
+            "name": "Jira",
+            "description": "Create, update, and query Jira issues and projects.",
+            "category": "Issue Tracker",
+            "icon_url": "https://wac-cdn.atlassian.com/assets/img/favicons/atlassian/favicon.png",
+            "auth_type": "oauth"
+        }
+
     async def get_authorization_url(self, state: str, redirect_uri: str) -> str:
         scopes = "read:jira-work write:jira-work read:jira-user offline_access"
         import urllib.parse

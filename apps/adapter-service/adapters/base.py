@@ -51,6 +51,11 @@ class BaseOAuthAdapter(ABC):
         pass
 
     @abstractmethod
+    def info(self) -> Dict[str, Any]:
+        """Returns metadata about the connector (id, name, description, etc.)"""
+        pass
+
+    @abstractmethod
     async def execute_tool(self, tool_name: str, arguments: dict, access_token: str, provider_metadata: dict) -> Any:
         """
         Executes a normalized capability using the provider's API.
