@@ -7,17 +7,12 @@ import urllib.parse
 from fastapi import APIRouter, Query, Request, HTTPException
 from fastapi.responses import RedirectResponse
 import structlog
-from adapters.jira import JiraAdapter
 from core.registry import tool_registry
+from adapters.factory import adapter_factory
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/connections/oauth", tags=["oauth"])
-
-# Provider mapping. In a real application, multiple ones.
-adapters_map = {
-    "jira": JiraAdapter()
-}
 
 @router.get("/{provider}/authorize")
 async def authorize(
@@ -25,10 +20,10 @@ async def authorize(
     org_id: str = Query(...),
     user_id: str = Query(...)
 ):
-    if provider not in adapters_map:
+    try:
+        adapter = adapter_factory.get_adapter(provider)
+    except ValueError:
         raise HTTPException(status_code=400, detail="Provider not found")
-        
-    adapter = adapters_map[provider]
     state_dict = {"org_id": org_id, "user_id": user_id, "provider": provider}
     state = base64.urlsafe_b64encode(json.dumps(state_dict).encode()).decode()
     
@@ -53,8 +48,9 @@ async def callback(request: Request):
     except Exception:
         raise HTTPException(400, "Invalid state format")
         
-    adapter = adapters_map.get(provider)
-    if not adapter:
+    try:
+        adapter = adapter_factory.get_adapter(provider)
+    except ValueError:
         raise HTTPException(400, "Invalid provider in state")
         
     redirect_uri = os.environ.get("OAUTH_CALLBACK_URL", "http://localhost:8005/api/connections/oauth/callback")
@@ -85,21 +81,6 @@ async def callback(request: Request):
         res = await client.post(internal_save_url, json=payload)
         res.raise_for_status()
 
-    # Discover and register capabilities dynamically
-    capabilities = await adapter.discover_capabilities(token_data["access_token"])
-    mapped_tools = []
-    
-    for cap in capabilities:
-        # Pydantic dict serialization or manual mapping
-        mapped_tools.append({
-            "name": f"{provider}.{cap.name}",
-            "description": cap.description,
-            "inputSchema": cap.input_schema
-        })
-        
-    # Register purely in memory for this server instance
-    tool_registry.register_tools(f"oauth_{provider}_{org_id}", mapped_tools)
-    
     # Redirect back to frontend
     frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
     return RedirectResponse(f"{frontend_url}/integrations?status=success&provider={provider}")

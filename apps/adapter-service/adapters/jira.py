@@ -3,6 +3,9 @@ import json
 import httpx
 from typing import Dict, Any, List
 from adapters.base import BaseOAuthAdapter, Capability
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 class JiraAdapter(BaseOAuthAdapter):
     provider_name = "jira"
@@ -122,9 +125,7 @@ class JiraAdapter(BaseOAuthAdapter):
                     logger.info("jira_adapter.discover_capabilities_success", count=len(capabilities))
                     return capabilities
         except Exception as e:
-            import structlog
             import traceback
-            logger = structlog.get_logger()
             logger.error("jira_adapter.discover_capabilities_failed", 
                          error=str(e), 
                          traceback=traceback.format_exc())

@@ -39,6 +39,14 @@ class ToolRegistry:
         
         logger.info("registry.tools_registered_for_server", server=server_name, count=len(tools))
 
+    def register_tool_schemas(self, server_name: str, schemas: List["ToolSchema"]):
+        if server_name not in self._tools:
+            self._tools[server_name] = {}
+        for schema in schemas:
+            self._tools[server_name][schema.name] = schema
+            logger.debug("registry.tool_registered", server=server_name, tool=schema.name)
+        logger.info("registry.tools_registered_for_server", server=server_name, count=len(schemas))
+
     def get_all_tools(self, org_id: Optional[str] = None) -> List[ToolSchema]:
         all_tools = []
         for server_name, server_tools in self._tools.items():
@@ -50,5 +58,8 @@ class ToolRegistry:
 
     def get_tool(self, server_name: str, tool_name: str) -> Optional[ToolSchema]:
         return self._tools.get(server_name, {}).get(tool_name)
+
+    def get_tools_for_server(self, server_name: str) -> List[ToolSchema]:
+        return list(self._tools.get(server_name, {}).values())
 
 tool_registry = ToolRegistry()

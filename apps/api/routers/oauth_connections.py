@@ -193,6 +193,16 @@ async def internal_save_connection(
         await session.commit()
     return {"status": "ok"}
 
+@router.get("/internal/list", response_model=List[OAuthConnectionResponse])
+async def internal_list_connections(
+    org_id: str = Query(...),
+    session: SessionDep = None,
+):
+    """Internal endpoint for adapter-service to list all active connections for an org."""
+    query = select(OAuthConnection).where(OAuthConnection.org_id == org_id)
+    conns = (await session.exec(query)).all()
+    return [_conn_to_response(c) for c in conns]
+
 @router.get("/internal/{provider}/token")
 async def internal_get_connection_token(
     provider: str,
