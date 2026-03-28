@@ -4,9 +4,10 @@ import structlog
 from fastapi import APIRouter, HTTPException, Query, status, Request
 from sqlmodel import select, func
 
+from sqlalchemy.orm import selectinload
 from auth.api_keys import CurrentUserDep
-from db.models import Agent
-from db.session import SessionDep, TenantSessionDep
+from db.models import Agent, Skill, AgentSkillLink
+from db.session import TenantSessionDep
 from schemas import (
     PaginationMeta,
     AgentCreateRequest,
@@ -19,13 +20,25 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-def _agent_to_response(agent: Agent) -> AgentResponse:
+def _agent_to_response(agent: Agent, skills: Optional[list[Skill]] = None) -> AgentResponse:
     tools = []
     try:
         tools = json.loads(agent.tools_json)
     except Exception:
         pass
     
+    # Use provided skills or extract from agent if already loaded (selectinload)
+    skill_ids = []
+    if skills is not None:
+        skill_ids = [s.id for s in skills]
+    else:
+        # Check if skills were eagerly loaded
+        try:
+            skill_ids = [s.id for s in agent.skills]
+        except Exception:
+            # Fallback to empty if not loaded to avoid lazy load error
+            skill_ids = []
+
     return AgentResponse(
         id=agent.id,
         org_id=agent.org_id,
@@ -34,6 +47,10 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         identity=agent.identity,
         model=agent.model,
         tools=tools,
+        skills=skill_ids,
+        max_iterations=agent.max_iterations,
+        memory_mode=agent.memory_mode,
+        is_active=agent.is_active,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
     )
@@ -53,13 +70,21 @@ async def create_agent(
         identity=body.identity,
         model=body.model,
         tools_json=json.dumps(body.tools),
+        max_iterations=body.max_iterations,
+        memory_mode=body.memory_mode,
     )
+    
+    if body.skills:
+        # Resolve skills for the org
+        skills = (await session.exec(select(Skill).where(Skill.org_id == org_id, Skill.id.in_(body.skills)))).all()
+        agent.skills = skills
+
     session.add(agent)
     await session.commit()
     # Skip refresh to avoid potential 500 during session-persisted refresh
     
     logger.info("api.agent_created", agent_id=agent.id, org_id=org_id)
-    return _agent_to_response(agent)
+    return _agent_to_response(agent, skills=skills if body.skills else [])
 
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
@@ -70,7 +95,7 @@ async def list_agents(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> AgentListResponse:
     org_id = getattr(request.state, "org_id", None) or current_user.org_id
-    query = select(Agent).where(Agent.org_id == org_id).order_by(Agent.created_at.desc())
+    query = select(Agent).where(Agent.org_id == org_id).options(selectinload(Agent.skills)).order_by(Agent.created_at.desc())
     
     count_query = select(func.count()).select_from(
         select(Agent).where(Agent.org_id == org_id).subquery()
@@ -132,6 +157,20 @@ async def update_agent(
         has_changes = True
     if body.tools is not None:
         agent.tools_json = json.dumps(body.tools)
+        has_changes = True
+    if body.skills is not None:
+        # Update skills many-to-many
+        skills = (await session.exec(select(Skill).where(Skill.org_id == org_id, Skill.id.in_(body.skills)))).all()
+        agent.skills = list(skills)
+        has_changes = True
+    if body.max_iterations is not None:
+        agent.max_iterations = body.max_iterations
+        has_changes = True
+    if body.memory_mode is not None:
+        agent.memory_mode = body.memory_mode
+        has_changes = True
+    if body.is_active is not None:
+        agent.is_active = body.is_active
         has_changes = True
         
     if has_changes:

@@ -18,12 +18,13 @@ from typing import Annotated, Optional
 import redis.asyncio as aioredis
 import structlog
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 from auth.api_keys import CurrentUserDep
 from auth.rbac import assert_can_trigger, assert_can_approve_hitl
-from db.models import HitlAction, HitlEvent, RunStatus, WorkflowRun
+from db.models import HitlAction, HitlEvent, RunStatus, WorkflowRun, RunEvent
 from db.session import SessionDep, TenantSessionDep
 from schemas import (
     DecisionRequest,
@@ -34,6 +35,7 @@ from schemas import (
     RunDetailResponse,
     RunListResponse,
     RunResponse,
+    RunEventResponse,
     StepResponse,
     TriggerRunRequest,
     DashboardStatsResponse,
@@ -54,11 +56,26 @@ def _run_to_response(run: WorkflowRun) -> RunResponse:
     return RunResponse(
         run_id=run.id,
         workflow_id=run.workflow_id,
+        agent_id=run.agent_id,
         ticket_id=run.ticket_id,
         status=run.status.value,
         dry_run=run.dry_run,
         created_at=run.created_at,
         updated_at=run.updated_at,
+    )
+
+
+def _event_to_response(event: "RunEvent") -> RunEventResponse:
+    try:
+        payload = json.loads(event.payload_json)
+    except Exception:
+        payload = {"raw": event.payload_json}
+    
+    return RunEventResponse(
+        event_id=event.id,
+        event_type=event.event_type.value,
+        payload=payload,
+        created_at=event.created_at,
     )
 
 
@@ -144,33 +161,43 @@ async def trigger_run(
         org_id=org_id,
         ticket_id=body.ticket_id,
         workflow_id=body.workflow_id,
+        # Priority: explicit body.agent_id -> inputs.agent_id -> None
+        agent_id=body.agent_id or (body.inputs.get("agent_id") if body.inputs else None),
         inputs_json=inputs_str,
         dry_run=body.dry_run,
         status=RunStatus.PENDING,
+        trigger_type="manual",
     )
     session.add(run)
     await session.commit()
     # Skip refresh to avoid potential 500
 
-    # Dispatch to Temporal worker only for legacy Phase 1 (ticket_id present)
-    # Dynamic workflow execution (Phase 3) is not yet implemented
-    if run.ticket_id:
-        try:
-            temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
-            temporal_client = await Client.connect(temporal_address)
+    # Phase 2: Start the dynamic ReAct workflow in Temporal
+    try:
+        temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
+        temporal_client = await Client.connect(temporal_address)
 
-            await temporal_client.start_workflow(
-                "AgentWorkflow",
-                args=[run.ticket_id, body.model or "gpt-4o"],
-                id=f"agent-workflow-{run.id}",
-                task_queue="agent-task-queue",
-            )
-            log.info("api.run_dispatched", run_id=run.id)
-        except Exception as e:
-            log.error("api.temporal_dispatch_failed", error=str(e))
-            raise HTTPException(status_code=500, detail="Failed to start workflow")
-    else:
-        log.info("api.dynamic_run_recorded", run_id=run.id, note="Execution engine not yet implemented")
+        # Parse inputs from JSON string
+        inputs = {}
+        if run.inputs_json:
+            try:
+                inputs = json.loads(run.inputs_json)
+            except Exception:
+                pass
+        
+        task_input = inputs.get("task") or run.ticket_id or "Execute agent task"
+        
+        await temporal_client.start_workflow(
+            "AgentReActWorkflow",
+            args=[str(run.agent_id), str(run.id), task_input],
+            id=f"agent-react-run-{run.id}",
+            task_queue="agent-task-queue",
+        )
+        log.info("api.run_dispatched", run_id=run.id, workflow="AgentReActWorkflow")
+    except Exception as e:
+        log.error("api.temporal_dispatch_failed", error=str(e))
+        # Don't fail the request if Temporal is down, but log it
+        # In a real prod environment, we'd want a separate queue or retry mechanism
 
     # Publish metering event (Epic 5.4 — fire-and-forget)
     import asyncio
@@ -269,8 +296,11 @@ async def get_run(
     return RunDetailResponse(
         run_id=run.id,
         workflow_id=run.workflow_id,
+        agent_id=run.agent_id,
         ticket_id=run.ticket_id,
         status=run.status.value,
+        trigger_type=run.trigger_type,
+        temporal_workflow_id=run.temporal_workflow_id,
         dry_run=run.dry_run,
         created_at=run.created_at,
         updated_at=run.updated_at,
@@ -285,6 +315,7 @@ async def get_run(
             )
             for s in run.steps  # type: ignore[attr-defined]
         ],
+        events=[_event_to_response(e) for e in run.events],
         hitl_events=[
             HitlEventResponse(
                 event_id=h.id,
@@ -295,6 +326,58 @@ async def get_run(
             for h in run.hitl_events  # type: ignore[attr-defined]
         ],
     )
+
+
+@router.get("/{run_id}/events", response_model=list[RunEventResponse])
+async def get_run_events(
+    run_id: str,
+    session: TenantSessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+) -> list[RunEventResponse]:
+    """Get chronological lifecycle events (thoughts, actions) for a run."""
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    run = await _get_run_or_404(run_id, org_id, session)
+    return [_event_to_response(e) for e in run.events]
+
+
+@router.get("/{run_id}/events/stream")
+async def stream_run_events(
+    run_id: str,
+    session: TenantSessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+):
+    """
+    SSE endpoint streaming real-time run events (thoughts, tool calls).
+    Subscribes to Redpanda topic `t.{org_id}.run-events`.
+    """
+    from aiokafka import AIOKafkaConsumer
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    brokers = os.environ.get("REDPANDA_BROKERS", "localhost:19092")
+    topic = f"t.{org_id}.run-events"
+
+    async def event_generator():
+        consumer = AIOKafkaConsumer(
+            topic,
+            bootstrap_servers=brokers,
+            auto_offset_reset="earliest", # Catch up on missed events
+            enable_auto_commit=False,
+            group_id=f"sse-consumer-{run_id}-{current_user.id}"
+        )
+        await consumer.start()
+        try:
+            async for msg in consumer:
+                try:
+                    data = json.loads(msg.value.decode("utf-8"))
+                    if data.get("run_id") == run_id:
+                        yield f"data: {json.dumps(data)}\n\n"
+                except Exception as e:
+                    logger.error("sse.parse_error", error=str(e))
+        finally:
+            await consumer.stop()
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +522,7 @@ async def _get_run_or_404(
             WorkflowRun.org_id == org_id,
         ).options(
             selectinload(WorkflowRun.steps),
+            selectinload(WorkflowRun.events),
             selectinload(WorkflowRun.hitl_events),
         )
     )

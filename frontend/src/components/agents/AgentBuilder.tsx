@@ -1,19 +1,128 @@
-"use client"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { 
     Share, MessageSquare, PanelRightClose, Activity, Image as ImageIcon, 
     Globe, Paperclip, SquarePen, ArrowUp, Undo2, ChevronDown, 
     ExternalLink, Settings2, Sparkles, ChevronRight, FileEdit, 
-    Plus, ListTodo, MoreVertical, Search, Zap, Hexagon
+    Plus, ListTodo, MoreVertical, Search, Zap, Hexagon, Loader2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
+import { useApi } from "@/hooks/use-api"
+
+interface Skill {
+    id: string;
+    name: string;
+    content: string;
+}
+
+interface Tool {
+    name: string;
+    description: string;
+}
+
+interface Connector {
+    connector_id: string;
+    connector_name: string;
+    icon_url: string;
+    tools: Tool[];
+}
+
+interface FormData {
+    name: string;
+    description: string;
+    identity: string;
+    model: string;
+    tools: string[];
+    skills: string[];
+    max_iterations: number;
+    memory_mode: "session" | "long_term";
+    self_improve: boolean;
+}
 
 export function AgentBuilder() {
     const router = useRouter()
+    const api = useApi()
+    
+    // Form State
+    const [formData, setFormData] = useState<FormData>({
+        name: "Ready Maker",
+        description: "",
+        identity: "",
+        model: "claude-3-5-sonnet-20241022",
+        tools: [],
+        skills: [],
+        max_iterations: 10,
+        memory_mode: "session",
+        self_improve: true
+    })
+    
     const [msg, setMsg] = useState("")
+    const [skills, setSkills] = useState<Skill[]>([])
+    const [connectors, setConnectors] = useState<Connector[]>([])
+    const [loading, setLoading] = useState(true)
+    const [saving, setSaving] = useState(false)
+
+    useEffect(() => {
+        if (!api.orgId) return;
+
+        const fetchData = async () => {
+            setLoading(true)
+            try {
+                const [skillsData, connectorsData] = await Promise.all([
+                    api.get<{ items: Skill[] }>('/api/skills'),
+                    api.get<Connector[]>('/api/connectors/installed')
+                ])
+                setSkills(skillsData.items || [])
+                setConnectors(connectorsData || [])
+            } catch (err) {
+                console.error("Failed to fetch builder data", err)
+            } finally {
+                setLoading(false)
+            }
+        }
+        fetchData()
+    }, [api.orgId])
+
+    const handleSave = async () => {
+        if (!api.orgId) return;
+        setSaving(true)
+        try {
+            await api.post('/api/agents', {
+                name: formData.name,
+                description: formData.description,
+                identity: formData.identity,
+                model: formData.model,
+                tools: formData.tools,
+                skills: formData.skills,
+                max_iterations: formData.max_iterations,
+                memory_mode: formData.memory_mode
+            })
+            router.push('/agents')
+        } catch (err) {
+            alert("Failed to save agent")
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const toggleTool = (toolKey: string) => {
+        setFormData((prev: FormData) => ({
+            ...prev,
+            tools: prev.tools.includes(toolKey) 
+                ? prev.tools.filter((t: string) => t !== toolKey)
+                : [...prev.tools, toolKey]
+        }))
+    }
+
+    const toggleSkill = (skillId: string) => {
+        setFormData((prev: FormData) => ({
+            ...prev,
+            skills: prev.skills.includes(skillId)
+                ? prev.skills.filter((s: string) => s !== skillId)
+                : [...prev.skills, skillId]
+        }))
+    }
 
     return (
         <div className="flex-1 flex w-full bg-background h-full overflow-hidden">
@@ -104,10 +213,15 @@ export function AgentBuilder() {
                 {/* Header Actions */}
                 <div className="h-14 border-b flex items-center justify-between px-4 bg-white dark:bg-zinc-950 shrink-0">
                     <div className="flex gap-2 w-full">
-                        <Button variant="secondary" className="flex-1 h-8 text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-400">
-                            Save <kbd className="ml-2 font-mono text-[9px] bg-white/50 px-1.5 py-0.5 rounded shadow-sm text-zinc-500">⌘ S</kbd>
+                        <Button 
+                            variant="secondary" 
+                            className="flex-1 h-8 text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-900 dark:text-zinc-100"
+                            onClick={handleSave}
+                            disabled={saving}
+                        >
+                            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : "Save"} <kbd className="ml-2 font-mono text-[9px] bg-white/50 px-1.5 py-0.5 rounded shadow-sm text-zinc-500">⌘ S</kbd>
                         </Button>
-                        <Button variant="ghost" className="flex-1 h-8 text-xs font-semibold text-zinc-400 hover:bg-zinc-100">
+                        <Button variant="ghost" className="flex-1 h-8 text-xs font-semibold text-zinc-400 hover:bg-zinc-100" onClick={() => router.back()}>
                             <Undo2 className="w-3.5 h-3.5 mr-1.5" /> Revert <kbd className="ml-2 font-mono text-[9px] border px-1.5 py-0.5 rounded shadow-sm">⌘ U</kbd>
                         </Button>
                     </div>
@@ -141,6 +255,8 @@ export function AgentBuilder() {
                                 <textarea
                                     className="w-full outline-none resize-none text-[13px] min-h-[90px] bg-transparent placeholder:text-muted-foreground/60 focus:ring-0 font-medium"
                                     placeholder="Add instructions for the agent..."
+                                    value={formData.identity}
+                                    onChange={e => setFormData({ ...formData, identity: e.target.value })}
                                 />
                             </div>
                             <div className="px-1 pb-1 pt-0 flex justify-end">
@@ -152,7 +268,10 @@ export function AgentBuilder() {
                             <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
                                 <FileEdit className="w-4 h-4 text-muted-foreground" /> Self-Improve Instructions
                             </div>
-                            <Switch defaultChecked />
+                            <Switch 
+                                checked={formData.self_improve} 
+                                onCheckedChange={v => setFormData({ ...formData, self_improve: v })} 
+                            />
                         </div>
                     </div>
 
@@ -193,63 +312,39 @@ export function AgentBuilder() {
                         </div>
 
                         <div className="space-y-1 mt-2">
-                            {/* Jira Tool */}
-                            <div className="flex items-center justify-between px-2 py-2 hover:bg-white rounded-lg group transition-colors cursor-pointer border border-transparent hover:border-border hover:shadow-sm">
-                                <div className="flex items-center gap-3 text-[13px]">
-                                    <div className="w-7 h-7 bg-[#E8F0FE] rounded flex items-center justify-center shrink-0">
-                                        <Activity className="w-4 h-4 text-blue-600" />
+                            {connectors.map((conn: Connector) => (
+                                <div key={conn.connector_id} className="space-y-1">
+                                    <div className="flex items-center justify-between px-2 py-2 bg-zinc-100/30 rounded-lg">
+                                        <div className="flex items-center gap-3 text-[13px]">
+                                            <div className="w-7 h-7 bg-white rounded flex items-center justify-center shrink-0 border shadow-sm">
+                                                <img src={conn.icon_url} className="w-4 h-4 object-contain" alt="" />
+                                            </div>
+                                            <span className="font-semibold">{conn.connector_name}</span>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                        <span className="font-semibold">Jira</span>
-                                        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <div className="pl-10 space-y-1 py-1">
+                                        {conn.tools.map((tool: Tool) => {
+                                            const key = `${conn.connector_id}:${tool.name}`
+                                            const active = formData.tools.includes(key)
+                                            return (
+                                                <div key={key} className="flex items-center justify-between py-1 px-1 hover:bg-zinc-50 rounded transition-colors group">
+                                                    <span className="text-[12px] font-medium text-muted-foreground group-hover:text-foreground">{tool.name}</span>
+                                                    <Switch 
+                                                        checked={active} 
+                                                        onCheckedChange={() => toggleTool(key)} 
+                                                    />
+                                                </div>
+                                            )
+                                        })}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                    <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground"><MoreVertical className="w-4 h-4" /></Button>
-                                </div>
-                            </div>
-                            
-                            {/* Web Search */}
-                            <div className="flex items-center justify-between px-2 py-2 hover:bg-white rounded-lg transition-colors cursor-pointer border border-transparent hover:border-border hover:shadow-sm">
-                                <div className="flex items-center gap-3 text-[13px]">
-                                    <div className="w-7 h-7 bg-zinc-100 dark:bg-zinc-800 rounded flex items-center justify-center shrink-0 border shadow-sm">
-                                        <Globe className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
-                                    </div>
-                                    <span className="font-semibold">Web Search</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Switch defaultChecked />
-                                    <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground -mr-1"><MoreVertical className="w-4 h-4" /></Button>
-                                </div>
-                            </div>
-
-                            {/* Image Generation */}
-                            <div className="flex items-center justify-between px-2 py-2 hover:bg-white rounded-lg transition-colors cursor-pointer border border-transparent hover:border-border hover:shadow-sm">
-                                <div className="flex items-center gap-3 text-[13px]">
-                                    <div className="w-7 h-7 bg-zinc-100 dark:bg-zinc-800 rounded flex items-center justify-center shrink-0 border shadow-sm">
-                                        <ImageIcon className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
-                                    </div>
-                                    <span className="font-semibold">Image Generation</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Switch defaultChecked />
-                                    <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground -mr-1"><MoreVertical className="w-4 h-4" /></Button>
-                                </div>
-                            </div>
-
-                            {/* App Discovery */}
-                            <div className="flex items-center justify-between px-2 py-2 hover:bg-white rounded-lg transition-colors cursor-pointer border border-transparent hover:border-border hover:shadow-sm">
-                                <div className="flex items-center gap-3 text-[13px]">
-                                    <div className="w-7 h-7 bg-zinc-100 dark:bg-zinc-800 rounded flex items-center justify-center shrink-0 border shadow-sm">
-                                        <Search className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
-                                    </div>
-                                    <span className="font-semibold">App Discovery</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Switch defaultChecked />
-                                    <div className="w-7" />{/* alignment placeholder */}
-                                </div>
-                            </div>
+                            ))}
+                            {connectors.length === 0 && !loading && (
+                                <div className="text-xs text-center text-muted-foreground py-4 italic">No connectors found</div>
+                            )}
+                            {loading && (
+                                <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+                            )}
                         </div>
                     </div>
 
@@ -264,12 +359,20 @@ export function AgentBuilder() {
                                 <Plus className="w-3 h-3 mr-1" /> Skill
                             </Button>
                         </div>
-                        <div className="flex items-center justify-between px-2">
-                            <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
-                                <Zap className="w-4 h-4 text-muted-foreground" /> AI Skill Editing & Creation
+                        {skills.map((skill: Skill) => (
+                            <div key={skill.id} className="flex items-center justify-between px-2 py-1">
+                                <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+                                    <Zap className="w-4 h-4 text-muted-foreground" /> {skill.name}
+                                </div>
+                                <Switch 
+                                    checked={formData.skills.includes(skill.id)} 
+                                    onCheckedChange={() => toggleSkill(skill.id)} 
+                                />
                             </div>
-                            <Switch defaultChecked />
-                        </div>
+                        ))}
+                        {skills.length === 0 && !loading && (
+                            <div className="text-xs text-center text-muted-foreground py-4 italic">No skills defined</div>
+                        )}
                     </div>
                 </div>
             </div>

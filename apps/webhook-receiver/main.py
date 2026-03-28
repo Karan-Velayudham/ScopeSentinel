@@ -1,7 +1,7 @@
 import os
 import json
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
@@ -45,6 +45,7 @@ async def shutdown_event():
 class EventPayload(BaseModel):
     source: str
     event_type: str
+    org_id: Optional[str] = None
     payload: Dict[str, Any]
 
 async def publish_to_redpanda(event: EventPayload):
@@ -53,17 +54,18 @@ async def publish_to_redpanda(event: EventPayload):
         return
     
     try:
+        print(f"Publishing to {settings.webhook_topic}...")
         message = event.model_dump_json().encode("utf-8")
         await producer.send_and_wait(settings.webhook_topic, message)
-        print(f"Published event from {event.source} to topic {settings.webhook_topic}")
+        print(f"Successfully published event from {event.source} to topic {settings.webhook_topic}")
     except Exception as e:
         print(f"Error publishing to Redpanda: {e}")
 
-@app.post("/webhook/{source}")
-async def receive_webhook(source: str, request: Request, background_tasks: BackgroundTasks):
+@app.post("/webhook/{source}/{org_id}")
+async def receive_webhook(source: str, org_id: str, request: Request, background_tasks: BackgroundTasks):
     """
-    Generic webhook receiver.
-    In a real implementation, you would validate the signature here based on the 'source'.
+    Generic webhook receiver with org scoping.
+    URL: /webhook/jira/org-123
     """
     try:
         payload = await request.json()
@@ -75,17 +77,22 @@ async def receive_webhook(source: str, request: Request, background_tasks: Backg
     if source.lower() == "github":
         event_type = request.headers.get("X-GitHub-Event", "push")
     elif source.lower() == "jira":
-        event_type = payload.get("webhookEvent", "jira:issue_updated")
+        event_type = payload.get("webhookEvent", "jira:issue_created")
 
     event = EventPayload(
         source=source,
         event_type=event_type,
+        org_id=org_id,
         payload=payload
     )
 
-    background_tasks.add_task(publish_to_redpanda, event)
+    try:
+        await publish_to_redpanda(event)
+    except Exception as e:
+        print(f"FAILED TO PUBLISH: {e}")
+        raise HTTPException(status_code=500, detail=f"Publish failed: {e}")
 
-    return {"status": "accepted", "source": source, "event_type": event_type}
+    return {"status": "accepted", "source": source, "event_type": event_type, "org_id": org_id}
 
 @app.get("/health")
 def health_check():

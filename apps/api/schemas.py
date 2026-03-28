@@ -29,6 +29,10 @@ class PaginationMeta(BaseModel):
 # ---------------------------------------------------------------------------
 
 class TriggerRunRequest(BaseModel):
+    agent_id: Optional[str] = Field(
+        default=None,
+        description="ID of the agent to run (Phase 3+)",
+    )
     ticket_id: Optional[str] = Field(
         default=None,
         description="Jira ticket ID to process (legacy Phase 1)",
@@ -97,15 +101,19 @@ class HitlEventResponse(BaseModel):
 
 
 class RunDetailResponse(BaseModel):
-    """Full run with steps and HITL history."""
+    """Full run with steps and events history."""
     run_id: str
     workflow_id: Optional[str] = None
+    agent_id: Optional[str] = None
     ticket_id: Optional[str] = None
     status: str
+    trigger_type: str = "manual"
+    temporal_workflow_id: Optional[str] = None
     dry_run: bool
     created_at: datetime
     updated_at: datetime
     steps: list[StepResponse]
+    events: list[RunEventResponse]
     hitl_events: list[HitlEventResponse]
     total_tokens: Optional[int] = 0
     prompt_tokens: Optional[int] = 0
@@ -113,6 +121,13 @@ class RunDetailResponse(BaseModel):
     estimated_cost: Optional[float] = 0.0
     analysis_passed: Optional[bool] = None
     analysis_feedback: Optional[str] = None
+
+
+class RunEventResponse(BaseModel):
+    event_id: str
+    event_type: str
+    payload: dict[str, Any]
+    created_at: datetime
 
 
 class PlanResponse(BaseModel):
@@ -276,6 +291,9 @@ class AgentCreateRequest(BaseModel):
     identity: str
     model: str = "gpt-4o"
     tools: list[str] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)
+    max_iterations: int = 10
+    memory_mode: Literal["session", "long_term"] = "session"
 
 class AgentUpdateRequest(BaseModel):
     name: Optional[str] = None
@@ -283,6 +301,10 @@ class AgentUpdateRequest(BaseModel):
     identity: Optional[str] = None
     model: Optional[str] = None
     tools: Optional[list[str]] = None
+    skills: Optional[list[str]] = None
+    max_iterations: Optional[int] = None
+    memory_mode: Optional[Literal["session", "long_term"]] = None
+    is_active: Optional[bool] = None
 
 class AgentResponse(BaseModel):
     id: str
@@ -292,9 +314,42 @@ class AgentResponse(BaseModel):
     identity: str
     model: str
     tools: list[str]
+    skills: list[str] = Field(default_factory=list)
+    max_iterations: int
+    memory_mode: str
+    is_active: bool
     created_at: datetime
     updated_at: datetime
 
 class AgentListResponse(BaseModel):
     items: list[AgentResponse]
+    meta: PaginationMeta
+
+
+# ---------------------------------------------------------------------------
+# Skills (Phase 1)
+# ---------------------------------------------------------------------------
+
+class SkillCreateRequest(BaseModel):
+    name: str
+    content: str
+    is_active: bool = True
+
+class SkillUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    content: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class SkillResponse(BaseModel):
+    id: str
+    org_id: str
+    name: str
+    content: str
+    version: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+class SkillListResponse(BaseModel):
+    items: list[SkillResponse]
     meta: PaginationMeta

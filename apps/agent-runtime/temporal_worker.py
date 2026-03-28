@@ -4,12 +4,21 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from workflows.agent_workflow import AgentWorkflow
+from workflows.react_workflow import AgentReActWorkflow
 from activities.agent_activities import (
     fetch_ticket_activity,
     planning_activity,
     coder_activity,
     index_repo_activity,
     analyzer_activity,
+)
+from activities.react_activities import (
+    get_agent_config_activity,
+    llm_reasoning_activity,
+    execute_tool_activity,
+    log_event_activity,
+    update_run_status_activity,
+    get_org_id_activity,
 )
 
 async def main():
@@ -29,13 +38,19 @@ async def main():
     worker = Worker(
         client,
         task_queue="agent-task-queue",
-        workflows=[AgentWorkflow],
+        workflows=[AgentWorkflow, AgentReActWorkflow],
         activities=[
             fetch_ticket_activity,
             planning_activity,
             coder_activity,
             index_repo_activity,
             analyzer_activity,
+            get_agent_config_activity,
+            llm_reasoning_activity,
+            execute_tool_activity,
+            log_event_activity,
+            update_run_status_activity,
+            get_org_id_activity,
         ],
     )
     await worker.run()

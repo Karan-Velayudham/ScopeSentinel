@@ -213,6 +213,7 @@ services:
       MINIO_ACCESS_KEY: "admin"
       MINIO_SECRET_KEY: "adminpassword"
       LITELLM_URL: "http://litellm:4000"
+      REDPANDA_BROKERS: "redpanda:9092"
     volumes:
       - ./workspace:/app/workspace
       - /var/run/docker.sock:/var/run/docker.sock
@@ -265,7 +266,8 @@ services:
     environment:
       REDPANDA_BROKERS: "redpanda:9092"
       WEBHOOK_TOPIC: "incoming-events"
-      API_URL: "http://api:8000"
+      API_URL: "http://172.25.0.17:8000"
+      INTERNAL_AUTH_TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQHNjb3Blc2VudGluZWwubG9jYWwiLCJvcmdfaWQiOiJjZmI3Y2E3NC0yZThkLTRjOTEtODc1ZS1mYzc3MmI0NjI2OGIifQ.hEOCYL-Y1E55-swqU9wX93yereozSogdnAztI4Xg2bg"
     depends_on:
       redpanda:
         condition: service_healthy

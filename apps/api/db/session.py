@@ -31,11 +31,10 @@ def _build_database_url() -> str:
 
 DATABASE_URL = _build_database_url()
 
-# pool_pre_ping=True: validate connections before use (handles DB restarts)
+# pool_pre_ping=False to avoid MissingGreenlet in some async contexts
 engine = create_async_engine(
     DATABASE_URL,
     echo=os.environ.get("DB_ECHO", "false").lower() == "true",
-    pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
 )

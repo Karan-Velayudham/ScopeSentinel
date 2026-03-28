@@ -65,6 +65,20 @@ class UserRole(str, enum.Enum):
     VIEWER = "VIEWER"
 
 
+class MemoryMode(str, enum.Enum):
+    SESSION = "session"
+    LONG_TERM = "long_term"
+
+
+class RunEventType(str, enum.Enum):
+    THOUGHT = "thought"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
+    ERROR = "error"
+    LOG = "log"
+    FINISH = "finish"
+
+
 class TenantStatus(str, enum.Enum):
     PROVISIONING = "PROVISIONING"
     ACTIVE = "ACTIVE"
@@ -119,6 +133,33 @@ class Workflow(SQLModel, table=True):
 
 
 # ---------------------------------------------------------------------------
+# Skill (Phase 1)
+# ---------------------------------------------------------------------------
+
+class AgentSkillLink(SQLModel, table=True):
+    __tablename__ = "agent_skill_links"
+    agent_id: str = Field(foreign_key="agents.id", primary_key=True)
+    skill_id: str = Field(foreign_key="skills.id", primary_key=True)
+
+
+class Skill(SQLModel, table=True):
+    __tablename__ = "skills"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    name: str = Field(index=True)
+    content: str = Field(description="The instructional prompt for this skill")
+    version: int = Field(default=1)
+    is_active: bool = Field(default=True, index=True)
+    
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+
+    # Relationships
+    agents: list["Agent"] = Relationship(back_populates="skills", link_model=AgentSkillLink)
+
+
+# ---------------------------------------------------------------------------
 # Agent (Epic 3.4)
 # ---------------------------------------------------------------------------
 
@@ -133,11 +174,22 @@ class Agent(SQLModel, table=True):
     model: str = Field(default="gpt-4o")
     # Store tools as a comma-separated string or JSON-encoded list
     tools_json: str = Field(default="[]")
+    
+    # New fields for Phase 1
+    max_iterations: int = Field(default=10)
+    memory_mode: MemoryMode = Field(
+        default=MemoryMode.SESSION,
+        sa_type=Enum(MemoryMode, native_enum=False)
+    )
+    is_active: bool = Field(default=True, index=True)
+
     created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
     updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
 
     # Relationships
     org: Optional[Org] = Relationship(back_populates="agents")
+    runs: list["WorkflowRun"] = Relationship(back_populates="agent")
+    skills: list[Skill] = Relationship(back_populates="agents", link_model=AgentSkillLink)
 
 
 # ---------------------------------------------------------------------------
@@ -175,13 +227,21 @@ class WorkflowRun(SQLModel, table=True):
     id: str = Field(default_factory=_new_uuid, primary_key=True)
     org_id: str = Field(foreign_key="orgs.id", index=True)
     workflow_id: Optional[str] = Field(default=None, foreign_key="workflows.id", index=True)
+    agent_id: Optional[str] = Field(default=None, foreign_key="agents.id", index=True)
+    
     ticket_id: Optional[str] = Field(default=None, index=True)
     inputs_json: Optional[str] = Field(default=None)
+    output_json: Optional[str] = Field(default=None)
+    
     status: RunStatus = Field(
         default=RunStatus.PENDING,
         index=True,
         sa_type=Enum(RunStatus, native_enum=False)
     )
+    
+    trigger_type: str = Field(default="manual", index=True) # manual | webhook | schedule | event
+    temporal_workflow_id: Optional[str] = Field(default=None, index=True)
+    
     dry_run: bool = Field(default=False)
     # JSON-encoded PlannerOutput (set after planning step completes)
     plan_json: Optional[str] = Field(default=None)
@@ -198,7 +258,9 @@ class WorkflowRun(SQLModel, table=True):
     # Relationships
     org: Optional[Org] = Relationship(back_populates="runs")
     workflow: Optional[Workflow] = Relationship(back_populates="runs")
+    agent: Optional[Agent] = Relationship(back_populates="runs")
     steps: list["RunStep"] = Relationship(back_populates="run")
+    events: list["RunEvent"] = Relationship(back_populates="run")
     hitl_events: list["HitlEvent"] = Relationship(back_populates="run")
 
 
@@ -252,6 +314,24 @@ class HitlEvent(SQLModel, table=True):
     # Relationships
     run: Optional[WorkflowRun] = Relationship(back_populates="hitl_events")
     decided_by_user: Optional[User] = Relationship(back_populates="hitl_decisions")
+
+
+# ---------------------------------------------------------------------------
+# Run Event (Phase 1)
+# ---------------------------------------------------------------------------
+
+class RunEvent(SQLModel, table=True):
+    __tablename__ = "run_events"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    run_id: str = Field(foreign_key="workflow_runs.id", index=True)
+    event_type: RunEventType = Field(sa_type=Enum(RunEventType, native_enum=False))
+    # Arbitrary JSON data related to the event (thought text, tool call args, tool output)
+    payload_json: str = Field(default="{}")
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+
+    # Relationship
+    run: Optional[WorkflowRun] = Relationship(back_populates="events")
 
 
 # ---------------------------------------------------------------------------

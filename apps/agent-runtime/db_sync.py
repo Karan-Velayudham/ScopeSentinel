@@ -1,5 +1,7 @@
 import os
+import json
 import structlog
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 from datetime import datetime, timezone
@@ -85,6 +87,56 @@ async def get_agent(agent_id: str) -> dict:
     except Exception as e:
         logger.error("db.get_agent_failed", error=str(e), agent_id=agent_id)
         return {}
+
+
+async def get_skills_for_agent(agent_id: str) -> List[dict]:
+    """
+    Fetch all skills associated with an agent.
+    """
+    try:
+        async with engine.connect() as conn:
+            sql = """
+                SELECT s.id, s.name, s.content, s.version 
+                FROM skills s
+                JOIN agent_skill_links asl ON s.id = asl.skill_id
+                WHERE asl.agent_id = :id AND s.is_active = true
+            """
+            result = await conn.execute(text(sql), {"id": agent_id})
+            return [
+                {"id": r[0], "name": r[1], "content": r[2], "version": r[3]}
+                for r in result.fetchall()
+            ]
+    except Exception as e:
+        logger.error("db.get_skills_failed", error=str(e), agent_id=agent_id)
+        return []
+
+
+async def log_run_event(
+    run_id: str,
+    event_type: str,
+    payload: dict
+):
+    """
+    Create a new RunEvent in the database.
+    """
+    try:
+        async with engine.begin() as conn:
+            sql = """
+                INSERT INTO run_events (id, run_id, event_type, payload_json, created_at)
+                VALUES (:id, :run_id, :type, :payload, :now)
+            """
+            import uuid
+            params = {
+                "id": str(uuid.uuid4()),
+                "run_id": run_id,
+                "type": event_type.upper(),
+                "payload": json.dumps(payload),
+                "now": datetime.now(timezone.utc)
+            }
+            await conn.execute(text(sql), params)
+            logger.info("db.event_logged", run_id=run_id, type=event_type)
+    except Exception as e:
+        logger.error("db.log_event_failed", error=str(e), run_id=run_id)
 
 async def get_run_org_id(run_id: str) -> str:
     """Fetch the org_id for a given workflow run."""
