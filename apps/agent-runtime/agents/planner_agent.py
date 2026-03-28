@@ -7,7 +7,7 @@ and acceptance criteria into an actionable development plan with architectural n
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, List, Optional
 
 import structlog
 from agentscope.model import OpenAIChatModel
@@ -109,9 +109,15 @@ class PlannerAgent:
     agnostic to which MCP server provides each tool.
     """
 
-    def __init__(self, model: OpenAIChatModel, system_prompt: str = None):
+    def __init__(
+        self,
+        model: OpenAIChatModel,
+        system_prompt: str = None,
+        tool_definitions: Optional[List[dict]] = None,
+    ):
         self.model = model
         self.system_prompt = system_prompt or SYSTEM_PROMPT
+        self.tool_definitions = tool_definitions or []
 
     async def plan(
         self,
@@ -120,17 +126,8 @@ class PlannerAgent:
     ) -> PlannerOutput:
         """
         Generate an implementation plan for the given Jira ticket.
-
-        Args:
-            ticket_id:     The ID of the Jira ticket.
-            tool_registry: Flat dict of MCP tool callables from the pool.
-
-        Returns:
-            A PlannerOutput with parsed steps and architecture notes.
-
-        Raises:
-            MCPToolCallError: if fetching the Jira ticket fails.
-            LLMResponseError: if the LLM call fails or returns unparseable output.
+        If tool_definitions were provided, the LLM can call them directly
+        to gather additional context before writing the plan.
         """
         log = logger.bind(ticket_id=ticket_id, step="planner.plan")
         log.info("planner.fetching_ticket")
@@ -147,10 +144,47 @@ class PlannerAgent:
             {"role": "user", "content": _build_user_message(ticket_content)},
         ]
 
-        try:
-            response = await self.model(messages)
-        except Exception as exc:
-            raise LLMResponseError(f"LLM call failed in PlannerAgent.plan: {exc}") from exc
+        # Agentic loop — keep going until the LLM doesn't request a tool call
+        max_iterations = 5
+        for _ in range(max_iterations):
+            try:
+                kwargs = {}
+                if self.tool_definitions:
+                    kwargs["tools"] = self.tool_definitions
+                    kwargs["tool_choice"] = "auto"
+                response = await self.model(messages, **kwargs)
+            except Exception as exc:
+                raise LLMResponseError(f"LLM call failed in PlannerAgent.plan: {exc}") from exc
+
+            # Check if the LLM wants to call a tool
+            tool_calls = getattr(response, "tool_calls", None)
+            if not tool_calls:
+                # No tool call — the LLM gave a final answer
+                break
+
+            # Dispatch each tool call and feed results back into messages
+            messages.append({"role": "assistant", "tool_calls": tool_calls})
+            for tc in tool_calls:
+                fn_name = tc.function.name
+                import json as _json
+                fn_args = _json.loads(tc.function.arguments or "{}")
+                log.info("planner.tool_call", tool=fn_name, args=fn_args)
+                try:
+                    callable_fn = tool_registry.get(fn_name)
+                    if callable_fn:
+                        tool_result = await callable_fn(**fn_args)
+                        result_str = str(tool_result)
+                    else:
+                        result_str = f"Tool '{fn_name}' not found in registry."
+                except Exception as te:
+                    result_str = f"Error calling '{fn_name}': {te}"
+                    log.warning("planner.tool_call_failed", tool=fn_name, error=str(te))
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result_str,
+                })
 
         # Extract usage from AgentScope response
         it = response.usage.get("input_tokens", 0) if response.usage else 0
@@ -175,25 +209,11 @@ class PlannerAgent:
         self,
         ticket_id: str,
         tool_registry: dict[str, Callable[..., Any]],
+        tool_definitions: Optional[List[dict]],
         feedback: str,
         previous_plan: PlannerOutput,
     ) -> PlannerOutput:
-        """
-        Generate a revised plan based on human feedback.
-
-        Args:
-            ticket_id:     The ID of the Jira ticket.
-            tool_registry: Flat dict of MCP tool callables from the pool.
-            feedback:      The reviewer's feedback string.
-            previous_plan: The PlannerOutput that was rejected.
-
-        Returns:
-            A new PlannerOutput incorporating the feedback.
-
-        Raises:
-            MCPToolCallError: if fetching the Jira ticket fails.
-            LLMResponseError: if the LLM call fails or returns unparseable output.
-        """
+        """Generate a revised plan based on human feedback."""
         log = logger.bind(ticket_id=ticket_id, step="planner.replan")
         log.info("planner.replanning", feedback_len=len(feedback))
 
@@ -220,7 +240,9 @@ class PlannerAgent:
         ]
 
         try:
-            response = await self.model(messages)
+            active_tools = tool_definitions or self.tool_definitions
+            kwargs = {"tools": active_tools, "tool_choice": "auto"} if active_tools else {}
+            response = await self.model(messages, **kwargs)
         except Exception as exc:
             raise LLMResponseError(f"LLM call failed in PlannerAgent.replan: {exc}") from exc
 

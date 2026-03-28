@@ -113,7 +113,7 @@ async def run_planner_workflow(ticket_id: str, *, dry_run: bool = False, org_id:
         # Step 1: Start dynamic MCP client pool
         log.info("remote_registry.loading")
         try:
-            tool_registry = await build_remote_tool_registry(org_id)
+            tool_registry, tool_definitions = await build_remote_tool_registry(org_id)
         except Exception as exc:
             raise MCPConnectionError(f"Failed to load remote tools: {exc}") from exc
 
@@ -139,7 +139,7 @@ async def run_planner_workflow(ticket_id: str, *, dry_run: bool = False, org_id:
 
             # Step 3: Generate plan
             log.info("step.planner")
-            planner = PlannerAgent(model=model)
+            planner = PlannerAgent(model=model, tool_definitions=tool_definitions)
             hitl = HITLGateway()
 
             try:
@@ -208,7 +208,7 @@ async def run_planner_workflow(ticket_id: str, *, dry_run: bool = False, org_id:
                         return
                     log.info("hitl.replanning", revision=revision)
                     try:
-                        plan = await planner.replan(ticket_id, tool_registry, decision.feedback, plan)
+                        plan = await planner.replan(ticket_id, tool_registry, tool_definitions, decision.feedback, plan)
                     except Exception as exc:
                         raise LLMResponseError(f"Replanning failed: {exc}") from exc
 

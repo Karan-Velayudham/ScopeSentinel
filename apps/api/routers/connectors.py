@@ -61,6 +61,30 @@ async def list_available_connectors(current_user: CurrentUserDep):
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _map_mcp_schema_to_inputs(input_schema: dict) -> list[dict]:
+    """Map MCP JSON schema properties to frontend ToolInputField format."""
+    if not input_schema:
+        return []
+    properties = input_schema.get("properties", {})
+    required_fields = set(input_schema.get("required", []))
+    inputs = []
+    for prop_name, prop_data in properties.items():
+        if not isinstance(prop_data, dict):
+            continue
+        inputs.append({
+            "name": prop_name,
+            "type": prop_data.get("type", "string"),
+            "description": prop_data.get("description", ""),
+            "required": prop_name in required_fields,
+            "default": prop_data.get("default", None)
+        })
+    return inputs
+
+
+# ---------------------------------------------------------------------------
 # Installed connectors with enriched detail
 # ---------------------------------------------------------------------------
 
@@ -101,10 +125,11 @@ async def list_installed_connectors(
                             tools_by_provider[provider] = []
                         
                         # Map internal ToolSchema to ConnectorTool
+                        mapped_inputs = _map_mcp_schema_to_inputs(t.get("input_schema", {}))
                         tools_by_provider[provider].append(ConnectorTool(
                             name=tool_name,
-                            description=t["description"],
-                            inputs=[] # JSON Schema is in t["input_schema"] if needed
+                            description=t.get("description", ""),
+                            inputs=mapped_inputs
                         ))
     except Exception as e:
         logger.error("connectors.fetch_dynamic_tools_failed", error=str(e))
@@ -148,8 +173,8 @@ async def get_connector_tools(
                 connector_tools = [
                     ConnectorTool(
                         name=t["name"].split(".", 1)[1] if "." in t["name"] else t["name"],
-                        description=t["description"],
-                        inputs=[]
+                        description=t.get("description", ""),
+                        inputs=_map_mcp_schema_to_inputs(t.get("input_schema", {}))
                     )
                     for t in all_tools 
                     if t["name"].startswith(f"{connector_id}.")

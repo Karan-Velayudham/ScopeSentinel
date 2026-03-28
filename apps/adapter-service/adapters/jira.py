@@ -124,11 +124,17 @@ class JiraAdapter(BaseOAuthAdapter):
                     
                     capabilities = []
                     for t in tools_result.tools:
+                        schema = t.inputSchema or {}
+                        # Strip cloudId from schema — it's auto-injected at execution time
+                        if "properties" in schema and "cloudId" in schema["properties"]:
+                            del schema["properties"]["cloudId"]
+                        if "required" in schema and "cloudId" in schema["required"]:
+                            schema["required"].remove("cloudId")
                         capabilities.append(
                             Capability(
                                 name=t.name,
                                 description=t.description or "",
-                                input_schema=t.inputSchema or {},
+                                input_schema=schema,
                                 scopes_required=[]
                             )
                         )
@@ -151,11 +157,16 @@ class JiraAdapter(BaseOAuthAdapter):
         
         mcp_url = "https://mcp.atlassian.com/v1/mcp"
         
+        # Inject cloudId from metadata — agent never needs to provide this
+        cloud_id = provider_metadata.get("cloud_id")
+        if cloud_id and "cloudId" not in arguments:
+            arguments = {"cloudId": cloud_id, **arguments}
+
         async with streamablehttp_client(mcp_url, headers=headers) as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments)
-                
+
                 # Convert the CallToolResult into a serializable dictionary
                 return result.model_dump()
 

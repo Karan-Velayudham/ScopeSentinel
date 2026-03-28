@@ -244,6 +244,19 @@ function ToolConfig({ data, update }: { data: any; update: (k: string, v: any) =
     };
     const addArg = () => update('args', { ...args, '': '' });
 
+    const [toolSchema, setToolSchema] = useState<ConnectorTool | null>(null);
+    const api = useApi();
+
+    useEffect(() => {
+        if (!data.connector_id || !data.tool_name || !api.orgId) return;
+        api.get<ConnectorTool[]>(`/api/connectors/${data.connector_id}/tools`)
+            .then(tools => {
+                const tool = tools.find(t => t.name === data.tool_name);
+                if (tool) setToolSchema(tool);
+            })
+            .catch(() => {});
+    }, [data.connector_id, data.tool_name, api.orgId]);
+
     return (
         <>
             <Field label="Connector">
@@ -251,11 +264,37 @@ function ToolConfig({ data, update }: { data: any; update: (k: string, v: any) =
             </Field>
             <Field label="Tool">
                 <div className="text-sm px-2.5 py-1.5 bg-muted rounded-md font-mono">{data.tool_name || '—'}</div>
+                {toolSchema?.description && (
+                    <div className="text-[10px] text-muted-foreground mt-1">{toolSchema.description}</div>
+                )}
             </Field>
-            <Field label="Input Bindings">
+            {toolSchema && toolSchema.inputs && toolSchema.inputs.length > 0 && (
+                <Field label="Tool Arguments">
+                    <div className="space-y-3">
+                        {toolSchema.inputs.map(input => (
+                            <div key={input.name} className="flex flex-col gap-1 border-l-2 border-primary/20 pl-2">
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="font-mono text-foreground">{input.name} {input.required && <span className="text-destructive">*</span>}</span>
+                                    <span className="text-[10px] text-muted-foreground uppercase">{input.type}</span>
+                                </div>
+                                <TextInput 
+                                    value={args[input.name] || ''} 
+                                    onChange={v => setArg(input.name, v)}
+                                    placeholder={`{{ steps.planner.outputs.result }}`}
+                                    mono
+                                />
+                                {input.description && <div className="text-[10px] text-muted-foreground">{input.description}</div>}
+                            </div>
+                        ))}
+                    </div>
+                </Field>
+            )}
+            <Field label={toolSchema && toolSchema.inputs && toolSchema.inputs.length > 0 ? "Extra Bindings" : "Input Bindings"}>
                 <div className="space-y-1.5">
-                    {Object.entries(args).map(([k, v]) => (
-                        <div key={k} className="flex items-center gap-1.5">
+                    {Object.entries(args)
+                        .filter(([k]) => !toolSchema?.inputs?.some(i => i.name === k))
+                        .map(([k, v]) => (
+                            <div key={k} className="flex items-center gap-1.5">
                             <input
                                 className="border rounded px-2 py-1 text-xs font-mono bg-background w-28 outline-none"
                                 value={k}
