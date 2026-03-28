@@ -45,7 +45,41 @@ async def _lazy_discover_oauth_tools(org_id: str):
                         token_res.raise_for_status()
                         token_data = token_res.json()
                         
-                        capabilities = await adapter.discover_capabilities(token_data["access_token"])
+                        access_token = token_data["access_token"]
+                        
+                        # Check if token is expired and refresh it
+                        from datetime import datetime, timezone
+                        expires_at_str = token_data.get("expires_at")
+                        if expires_at_str:
+                            try:
+                                expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                                now = datetime.now(timezone.utc)
+                                if now >= expires_at:
+                                    logger.info("tools.token_expired_refreshing", provider=provider, expires_at=expires_at_str)
+                                    refresh_token = token_data.get("refresh_token", "")
+                                    if refresh_token:
+                                        new_token_data = await adapter.refresh_token(refresh_token)
+                                        access_token = new_token_data["access_token"]
+                                        
+                                        # Save the refreshed token back to the API
+                                        import json as _json
+                                        import urllib.parse
+                                        save_url = f"{api_url}/api/oauth-connections/internal/save?org_id={urllib.parse.quote(org_id)}&user_id=system"
+                                        await client.post(save_url, json={
+                                            "provider": provider,
+                                            "access_token": access_token,
+                                            "refresh_token": new_token_data.get("refresh_token", refresh_token),
+                                            "expires_at": (datetime.now(timezone.utc).isoformat()),
+                                            "scopes": _json.dumps(new_token_data.get("scopes", [])),
+                                            "provider_metadata": token_data.get("provider_metadata", "{}")
+                                        })
+                                        logger.info("tools.token_refreshed_and_saved", provider=provider)
+                                    else:
+                                        logger.warning("tools.token_expired_no_refresh_token", provider=provider)
+                            except Exception as refresh_err:
+                                logger.warning("tools.token_refresh_failed", provider=provider, error=str(refresh_err))
+                        
+                        capabilities = await adapter.discover_capabilities(access_token)
                         
                         schemas = [
                             ToolSchema(
@@ -63,6 +97,7 @@ async def _lazy_discover_oauth_tools(org_id: str):
                         logger.error("tools.lazy_discovery_failed", provider=provider, error=str(e))
     except Exception as e:
         logger.error("tools.lazy_discovery_list_failed", error=str(e))
+
 
 @router.post("/{server_name}/{tool_name}/execute")
 async def execute_tool(

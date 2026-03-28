@@ -106,18 +106,18 @@ class JiraAdapter(BaseOAuthAdapter):
             return jira_resources[0]["id"]
 
     async def discover_capabilities(self, access_token: str) -> List[Capability]:
-        from mcp.client.sse import sse_client
+        from mcp.client.streamable_http import streamablehttp_client
         from mcp.client.session import ClientSession
         
         headers = {
             "Authorization": f"Bearer {access_token}"
         }
         
-        mcp_url = "https://api.atlassian.com/mcp/v1/sse"
+        mcp_url = "https://mcp.atlassian.com/v1/mcp"
         
         try:
             logger.info("jira_adapter.discover_capabilities_started", url=mcp_url)
-            async with sse_client(mcp_url, headers=headers) as (read_stream, write_stream):
+            async with streamablehttp_client(mcp_url, headers=headers) as (read_stream, write_stream, _):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
                     tools_result = await session.list_tools()
@@ -142,16 +142,16 @@ class JiraAdapter(BaseOAuthAdapter):
             return []
 
     async def execute_tool(self, tool_name: str, arguments: dict, access_token: str, provider_metadata: dict) -> Any:
-        from mcp.client.sse import sse_client
+        from mcp.client.streamable_http import streamablehttp_client
         from mcp.client.session import ClientSession
         
         headers = {
             "Authorization": f"Bearer {access_token}"
         }
         
-        mcp_url = "https://api.atlassian.com/mcp/v1/sse"
+        mcp_url = "https://mcp.atlassian.com/v1/mcp"
         
-        async with sse_client(mcp_url, headers=headers) as (read_stream, write_stream):
+        async with streamablehttp_client(mcp_url, headers=headers) as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments)
