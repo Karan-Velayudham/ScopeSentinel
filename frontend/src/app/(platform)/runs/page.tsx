@@ -34,7 +34,20 @@ export default function RunsPage() {
     const [error, setError] = useState<string | null>(null);
     const [triggerOpen, setTriggerOpen] = useState(false);
     const [ticketId, setTicketId] = useState("");
+    const [agentId, setAgentId] = useState("");
+    const [agents, setAgents] = useState<any[]>([]);
     const [triggering, setTriggering] = useState(false);
+
+    useEffect(() => {
+        if (triggerOpen && api.orgId) {
+            api.get<{ items: any[] }>('/api/agents').then(data => {
+                setAgents(data.items || []);
+                if (data.items && data.items.length > 0 && !agentId) {
+                    setAgentId(data.items[0].id);
+                }
+            }).catch(console.error);
+        }
+    }, [triggerOpen, api.orgId]);
 
     const hasPendingVisualRuns = runs.some(r => r.status === 'PENDING' && r.workflow_id && !r.ticket_id);
 
@@ -64,7 +77,7 @@ export default function RunsPage() {
         if (!ticketId.trim() || !api.orgId) return;
         setTriggering(true);
         try {
-            await api.post('/api/runs/', { ticket_id: ticketId.trim(), dry_run: false });
+            await api.post('/api/runs/', { ticket_id: ticketId.trim(), agent_id: agentId, dry_run: false });
             setTriggerOpen(false);
             setTicketId("");
             await fetchRuns();
@@ -105,6 +118,18 @@ export default function RunsPage() {
                                 <p className="text-xs text-muted-foreground">
                                     To trigger a visual workflow, use the <strong>Run</strong> button in the Workflow Designer instead.
                                 </p>
+                                <Label htmlFor="agent-select" className="mt-2 block">Select Agent</Label>
+                                <select 
+                                    id="agent-select" 
+                                    value={agentId} 
+                                    onChange={e => setAgentId(e.target.value)}
+                                    className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <option value="" disabled>Select an agent...</option>
+                                    {agents.map(a => (
+                                        <option key={a.id} value={a.id}>{a.name}</option>
+                                    ))}
+                                </select>
                             </div>
                             <DialogFooter>
                                 <Button variant="outline" onClick={() => setTriggerOpen(false)}>Cancel</Button>

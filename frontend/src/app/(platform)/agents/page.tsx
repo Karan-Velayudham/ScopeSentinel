@@ -19,7 +19,7 @@ export default function AgentsPage() {
         if (!api.orgId) return
 
         try {
-            const data = await api.get<{ items: any[] }>('/api/agents')
+            const data = await api.get<{ items: any[] }>('/api/agents/')
             setAgents(data.items || [])
         } catch (e) {
             console.error("Failed to fetch agents", e)

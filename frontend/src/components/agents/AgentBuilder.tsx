@@ -88,7 +88,7 @@ export function AgentBuilder() {
         if (!api.orgId) return;
         setSaving(true)
         try {
-            await api.post('/api/agents', {
+            await api.post('/api/agents/', {
                 name: formData.name,
                 description: formData.description,
                 identity: formData.identity,
@@ -132,9 +132,15 @@ export function AgentBuilder() {
                 <div className="h-14 border-b flex items-center justify-between px-4">
                     <div className="flex items-center gap-2">
                         <div className="w-7 h-7 bg-black dark:bg-white rounded-md flex items-center justify-center text-white dark:text-black">
-                            <span className="font-bold text-xs">O</span>
+                            <span className="font-bold text-xs">{formData.name ? formData.name.charAt(0).toUpperCase() : 'A'}</span>
                         </div>
-                        <span className="font-semibold text-sm">Ready Maker</span>
+                        <input
+                            type="text"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            className="font-semibold text-sm bg-transparent border-none outline-none focus:ring-0 p-0 w-[200px]"
+                            placeholder="Agent Name"
+                        />
                     </div>
                     <div className="flex items-center gap-2">
                         <Button variant="ghost" size="sm" className="text-muted-foreground h-8 text-xs font-medium">
