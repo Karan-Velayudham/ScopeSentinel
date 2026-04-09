@@ -1,16 +1,15 @@
 """
 db/session.py — Async SQLModel engine + session dependency (Epic 1.1.2)
 
-Two session types:
-  SessionDep        — plain session, always on the `public` schema.
-  TenantSessionDep  — sets `search_path=tenant_{id}, public` per request (Epic 5.1.2).
+Single session type used for all requests. Tenant isolation is enforced
+exclusively via `org_id` columns and WHERE clauses in each router — no
+per-tenant PostgreSQL schema switching is required at this stage.
 """
 
 import os
 from typing import AsyncGenerator, Annotated
 
-from fastapi import Depends, Request
-from sqlalchemy import text
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -58,29 +57,13 @@ async def create_db_and_tables() -> None:
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields an async DB session (public schema)."""
+    """FastAPI dependency that yields an async DB session."""
     async with AsyncSession(engine, expire_on_commit=False) as session:
-        await session.execute(text("SET search_path TO public"))
         yield session
 
 
-async def get_tenant_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields a tenant-scoped DB session.
-
-    Reads `request.state.tenant_id` (set by TenantMiddleware) and executes
-    `SET search_path TO tenant_{id}, public` so all queries within the
-    session are automatically scoped to the tenant's schema.
-    """
-    async with AsyncSession(engine, expire_on_commit=False) as session:
-        tenant_id = getattr(request.state, "tenant_id", None)
-        if tenant_id:
-            # Use SET instead of SET LOCAL to persist across transactions in the same session/connection
-            await session.execute(text(f"SET search_path TO tenant_{tenant_id}, public"))
-        else:
-            await session.execute(text("SET search_path TO public"))
-        yield session
-
-
-# Annotated type aliases for clean dependency declarations
+# Annotated type aliases for clean dependency declarations.
+# TenantSessionDep is intentionally identical to SessionDep — tenant isolation
+# is enforced by org_id WHERE clauses in each router, not by schema switching.
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
-TenantSessionDep = Annotated[AsyncSession, Depends(get_tenant_session)]
+TenantSessionDep = Annotated[AsyncSession, Depends(get_session)]

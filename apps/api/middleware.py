@@ -33,18 +33,13 @@ AUDIT_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
 
 class TenantMiddleware(BaseHTTPMiddleware):
     """
-    Extracts X-Tenant-Id from the incoming request header and stores it
-    in request.state.tenant_id so downstream DB sessions can set search_path.
+    Extracts X-ScopeSentinel-Org-ID from the incoming request header and
+    stores it in request.state.org_id so routers can scope queries by tenant.
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
         org_id = request.headers.get("X-ScopeSentinel-Org-ID")
-        if org_id:
-            request.state.org_id = org_id
-            request.state.tenant_id = org_id.replace("-", "_")
-        else:
-            request.state.org_id = None
-            request.state.tenant_id = None
+        request.state.org_id = org_id or None
 
         response = await call_next(request)
         return response
