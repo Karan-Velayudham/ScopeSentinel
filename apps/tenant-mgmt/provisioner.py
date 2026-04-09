@@ -37,7 +37,7 @@ QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
 
 # Topic definitions created per tenant
 TENANT_TOPICS = [
-    "events",    # General inbound events from webhook-receiver
+    "events",    # General inbound events
     "audit",     # Audit events consumed by the audit service
     "metering",  # Metering events consumed by the metering service
 ]
