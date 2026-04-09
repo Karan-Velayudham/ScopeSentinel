@@ -86,6 +86,12 @@ class TenantStatus(str, enum.Enum):
     DEPROVISIONED = "DEPROVISIONED"
 
 
+class TriggerType(str, enum.Enum):
+    SCHEDULE = "schedule"   # Recurring cron expression
+    ONE_TIME = "one_time"   # Fire once at a specific datetime
+    EVENT = "event"         # Fire on matching Redpanda event (Jira, Slack, Teams, etc.)
+
+
 # ---------------------------------------------------------------------------
 # Organisation
 # ---------------------------------------------------------------------------
@@ -108,6 +114,7 @@ class Org(SQLModel, table=True):
     agents: list["Agent"] = Relationship(back_populates="org")
     installed_connectors: list["InstalledConnector"] = Relationship(back_populates="org")
     oauth_connections: list["OAuthConnection"] = Relationship(back_populates="org")
+    trigger_definitions: list["TriggerDefinition"] = Relationship(back_populates="org")
 
 
 # ---------------------------------------------------------------------------
@@ -375,3 +382,55 @@ class OAuthConnection(SQLModel, table=True):
     # Relationships
     org: Optional[Org] = Relationship(back_populates="oauth_connections")
     user: Optional[User] = Relationship(back_populates="oauth_connections")
+
+
+# ---------------------------------------------------------------------------
+# Trigger Definition (Trigger Engine)
+# ---------------------------------------------------------------------------
+
+class TriggerDefinition(SQLModel, table=True):
+    """
+    Persisted trigger rule created by a user.
+
+    trigger_type governs which source in the Trigger Engine handles this trigger:
+      - schedule  → cron.py (recurring, APScheduler)
+      - one_time  → one_time.py (fires once at run_at datetime, then deactivates)
+      - event     → redpanda.py (matches incoming events by event_filter_json)
+    """
+    __tablename__ = "trigger_definitions"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    agent_id: str = Field(foreign_key="agents.id", index=True)
+    name: str = Field(index=True)
+    description: Optional[str] = Field(default=None)
+    is_active: bool = Field(default=True, index=True)
+
+    trigger_type: TriggerType = Field(
+        sa_type=Enum(TriggerType, native_enum=False),
+        index=True,
+    )
+
+    # --- Schedule (trigger_type = "schedule") ---
+    # Standard cron expression, e.g. "0 9 * * 1-5" = 9am weekdays
+    cron_expr: Optional[str] = Field(default=None)
+
+    # --- One-time (trigger_type = "one_time") ---
+    # UTC datetime to fire the run. Engine deactivates this trigger after firing.
+    run_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
+
+    # --- Event (trigger_type = "event") ---
+    # JSON object with keys to match against incoming Redpanda events.
+    # e.g. {"source": "jira", "event_type": "jira:issue_created"}
+    # Future: {"source": "slack", "event_type": "app_mention"}
+    event_filter_json: Optional[str] = Field(default=None)
+
+    # Static inputs passed to the run (JSON). Merged with event-extracted data.
+    inputs_json: Optional[str] = Field(default=None)
+
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+
+    # Relationships
+    org: Optional[Org] = Relationship(back_populates="trigger_definitions")
+    agent: Optional["Agent"] = Relationship()

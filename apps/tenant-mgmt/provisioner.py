@@ -217,6 +217,22 @@ async def _create_pg_schema(org_id: str, session: AsyncSession) -> None:
             is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
+        );""",
+
+        f"""CREATE TABLE IF NOT EXISTS {schema_name}.trigger_definitions (
+            id VARCHAR PRIMARY KEY,
+            org_id VARCHAR NOT NULL,
+            agent_id VARCHAR NOT NULL,
+            name VARCHAR NOT NULL,
+            description VARCHAR,
+            is_active BOOLEAN DEFAULT TRUE,
+            trigger_type VARCHAR NOT NULL,
+            cron_expr VARCHAR,
+            run_at TIMESTAMPTZ,
+            event_filter_json TEXT,
+            inputs_json TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
         );"""
     ]
 

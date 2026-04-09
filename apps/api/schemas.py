@@ -353,3 +353,65 @@ class SkillResponse(BaseModel):
 class SkillListResponse(BaseModel):
     items: list[SkillResponse]
     meta: PaginationMeta
+
+
+# ---------------------------------------------------------------------------
+# Trigger Definitions
+# ---------------------------------------------------------------------------
+
+class TriggerCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    agent_id: str = Field(description="Agent to invoke when this trigger fires")
+    trigger_type: Literal["schedule", "one_time", "event"]
+    # For schedule triggers
+    cron_expr: Optional[str] = Field(
+        default=None,
+        description="Standard cron expression, e.g. '0 9 * * 1-5'",
+        examples=["0 9 * * 1-5"]
+    )
+    # For one_time triggers
+    run_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC datetime to fire the run (one_time only)"
+    )
+    # For event triggers
+    event_filter: Optional[dict] = Field(
+        default=None,
+        description="Key/value pairs to match against incoming events, e.g. {\"source\": \"jira\", \"event_type\": \"jira:issue_created\"}"
+    )
+    inputs: Optional[dict] = Field(
+        default=None,
+        description="Static inputs to pass to the run"
+    )
+
+
+class TriggerUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    cron_expr: Optional[str] = None
+    run_at: Optional[datetime] = None
+    event_filter: Optional[dict] = None
+    inputs: Optional[dict] = None
+
+
+class TriggerResponse(BaseModel):
+    id: str
+    org_id: str
+    agent_id: str
+    name: str
+    description: Optional[str]
+    is_active: bool
+    trigger_type: str
+    cron_expr: Optional[str]
+    run_at: Optional[datetime]
+    event_filter: Optional[dict]
+    inputs: Optional[dict]
+    created_at: datetime
+    updated_at: datetime
+
+
+class TriggerListResponse(BaseModel):
+    items: list[TriggerResponse]
+    meta: PaginationMeta
