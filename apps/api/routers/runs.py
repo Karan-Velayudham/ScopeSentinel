@@ -134,6 +134,38 @@ async def get_dashboard_stats(
 
 
 # ---------------------------------------------------------------------------
+# Temporal dispatch routing
+# ---------------------------------------------------------------------------
+
+def _resolve_temporal_dispatch(run: WorkflowRun, task_input: str, inputs_json: str) -> tuple[str, list, str]:
+    """
+    Determine which Temporal workflow type to start and with what arguments.
+
+    Rules:
+      - workflow_id set → WorkflowYamlWorkflow (execute YAML step graph)
+      - agent_id set   → AgentReActWorkflow    (dynamic LLM ReAct loop)
+
+    Returns:
+        (workflow_type_name, args_list, temporal_workflow_id)
+    """
+    # Canonical workflow ID used for signals and lookups — consistent format everywhere
+    temporal_wf_id = f"ss-run-{run.id}"
+
+    if run.workflow_id:
+        return (
+            "WorkflowYamlWorkflow",
+            [str(run.workflow_id), str(run.id), task_input, inputs_json],
+            temporal_wf_id,
+        )
+    else:
+        return (
+            "AgentReActWorkflow",
+            [str(run.agent_id), str(run.id), task_input],
+            temporal_wf_id,
+        )
+
+
+# ---------------------------------------------------------------------------
 # POST /api/runs — trigger a new run
 # ---------------------------------------------------------------------------
 
@@ -166,40 +198,47 @@ async def trigger_run(
         inputs_json=inputs_str,
         dry_run=body.dry_run,
         status=RunStatus.PENDING,
-        trigger_type="manual",
+        trigger_type=body.trigger_type or "manual",
     )
     session.add(run)
     await session.commit()
-    # Skip refresh to avoid potential 500
 
-    # Phase 2: Start the dynamic ReAct workflow in Temporal
+    # Dispatch to Temporal — route to the right workflow type dynamically
     try:
         temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
         temporal_client = await Client.connect(temporal_address)
 
-        # Parse inputs from JSON string
-        inputs = {}
+        inputs: dict = {}
         if run.inputs_json:
             try:
                 inputs = json.loads(run.inputs_json)
             except Exception:
                 pass
-        
+
         task_input = inputs.get("task") or run.ticket_id or "Execute agent task"
-        
+
+        wf_type, wf_args, temporal_wf_id = _resolve_temporal_dispatch(
+            run, task_input, run.inputs_json or "{}"
+        )
+
         await temporal_client.start_workflow(
-            "AgentReActWorkflow",
-            args=[str(run.agent_id), str(run.id), task_input],
-            id=f"agent-react-run-{run.id}",
+            wf_type,
+            args=wf_args,
+            id=temporal_wf_id,
             task_queue="agent-task-queue",
         )
-        log.info("api.run_dispatched", run_id=run.id, workflow="AgentReActWorkflow")
+
+        # Persist the Temporal workflow ID so signals and lookups work
+        run.temporal_workflow_id = temporal_wf_id
+        session.add(run)
+        await session.commit()
+
+        log.info("api.run_dispatched", run_id=run.id, workflow=wf_type, temporal_wf_id=temporal_wf_id)
     except Exception as e:
         log.error("api.temporal_dispatch_failed", error=str(e))
-        # Don't fail the request if Temporal is down, but log it
-        # In a real prod environment, we'd want a separate queue or retry mechanism
+        # Don't fail the HTTP response if Temporal is temporarily down
 
-    # Publish metering event (Epic 5.4 — fire-and-forget)
+    # Publish metering event (fire-and-forget)
     import asyncio
     asyncio.create_task(_publish_metering_event(run.org_id, "run"))
 
@@ -448,18 +487,21 @@ async def submit_decision(
     await session.commit()
 
     # Send Signal to Temporal workflow
+    # Use temporal_workflow_id from the run record (persisted at dispatch time)
+    # Fall back to the canonical format if not yet populated (e.g. older runs)
     try:
         temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
         temporal_client = await Client.connect(temporal_address)
-        
-        handle = temporal_client.get_workflow_handle(f"agent-workflow-{run.id}")
+
+        temporal_wf_id = run.temporal_workflow_id or f"ss-run-{run.id}"
+        handle = temporal_client.get_workflow_handle(temporal_wf_id)
         await handle.signal(
             "hitl-decision-signal",
-            {"action": body.action, "feedback": body.feedback}
+            {"action": body.action, "feedback": body.feedback},
         )
+        logger.bind(run_id=run_id).info("api.temporal_signal_sent", temporal_wf_id=temporal_wf_id)
     except Exception as e:
-        logger.error("api.temporal_signal_failed", error=str(e))
-        # Might be okay if workflow already finished, but usually we'd want to handle gracefully
+        logger.error("api.temporal_signal_failed", error=str(e), run_id=run_id)
 
     logger.bind(run_id=run_id, user_id=current_user.id).info(
         "api.hitl_decision", action=body.action
