@@ -12,6 +12,7 @@ import {
     Users,
     ShieldCheck,
     CreditCard,
+    Layers,
 } from "lucide-react"
 import { useSession, signIn, signOut } from "next-auth/react"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -50,6 +51,11 @@ const data = {
             title: "Agents",
             url: "/agents",
             icon: Bot,
+        },
+        {
+            title: "Skills",
+            url: "/skills",
+            icon: Layers,
         },
         {
             title: "Integrations",
