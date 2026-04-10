@@ -332,19 +332,22 @@ class AgentListResponse(BaseModel):
 
 class SkillCreateRequest(BaseModel):
     name: str
-    content: str
+    description: Optional[str] = None
+    instructions: str
     is_active: bool = True
 
 class SkillUpdateRequest(BaseModel):
     name: Optional[str] = None
-    content: Optional[str] = None
+    description: Optional[str] = None
+    instructions: Optional[str] = None
     is_active: Optional[bool] = None
 
 class SkillResponse(BaseModel):
     id: str
     org_id: str
     name: str
-    content: str
+    description: Optional[str]
+    instructions: str
     version: int
     is_active: bool
     created_at: datetime

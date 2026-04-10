@@ -1,167 +1,387 @@
-# 🛡️ ScopeSentinel: Product Requirements Document (PRD)
+# 📄 AI Automation Platform - Functional Requirements (FR)
 
-ScopeSentinel is a comprehensive platform designed to empower users with AI-powered agents, dynamic workflows, and seamless application integrations. This document outlines the functional requirements for the core system components.
+## Overview
+This document defines the functional requirements for building a composable AI automation platform consisting of:
 
----
-
-## 📋 Table of Contents
-
-- [1. 🧑‍💻 Agents](#1--agents)
-- [2. 🔄 Workflows](#2--workflows)
-- [3. ⏱️ Triggers](#3--triggers)
-- [4. 🧠 Skills](#4--skills)
-- [5. 🔌 Apps (Integrations)](#5--apps-integrations)
-- [6. 🔗 Cross-Component Interactions](#6-cross-component-interactions)
-- [7. 📊 Execution & Observability](#7--execution--observability)
-- [8. 🔐 Access Control](#8--access-control)
+- Agents
+- Workflows
+- Triggers
+- Skills
+- Apps (Integrations)
 
 ---
 
-## 1. 🧑‍💻 AI Agents
+# 1. 🧑‍💻 AGENTS
 
-### 1.1 Objective
-Enable users to create AI-powered agents that can execute tasks using instructions, skills, workflows, and connected apps.
-
-### 1.2 Functional Requirements
-
-| ID | Requirement | Description |
-| :--- | :--- | :--- |
-| **FR-A1** | **Create Agent** | Users can define Name, Description, Instructions (system prompt), and Model selection (LLM). |
-| **FR-A2** | **Configure Preferences** | Selection of specific LLMs (e.g., GPT-4o, Claude 3.5 Sonnet). Enable/disable self-updates and tool access. |
-| **FR-A3** | **Attach Skills** | Add or remove reusable capabilities to a specific agent. |
-| **FR-A4** | **Attach Apps** | Grant agent access to specific connected third-party applications. |
-| **FR-A5** | **Manual Execution** | Synchronous interaction via a text query interface. |
-| **FR-A6** | **Programmatic Invocation**| Execution triggered by workflows or external events with structured payloads. |
-| **FR-A7** | **Output Handling** | Support for both natural language and structured JSON outputs based on schema. |
-
-> [!NOTE]
-> System must persist all agent configurations and maintain strict isolation between available skills/apps.
+## Objective
+Enable users to create AI-powered agents that execute tasks using instructions, skills, workflows, and apps.
 
 ---
 
-## 2. 🔄 Workflows
-
-### 2.1 Objective
-Allow users to define multi-step automation pipelines using a flexible, visual-builder approach.
-
-### 2.2 Functional Requirements
-
-#### Visual Builder & Graph
-- **FR-W1: Create Workflow**: Define name and description; initializes an empty canvas.
-- **FR-W2: Node Types**: Support for LLM, API, Condition (Logic), and Input/Output nodes.
-- **FR-W4: Node Connections**: Define directed edges to maintain execution order and branching logic.
-
-#### Node Configuration
-- **FR-W3: Node Setup**: 
-    - **LLM Node**: Select Agent, Skill, and map inputs.
-    - **API Node**: Select App, Action (e.g., "Create Jira Issue"), and configure payload.
-    - **Condition Node**: Define boolean logic (Equals, Contains, GT/LT).
-
-#### Execution & State
-- **FR-W5: Data Mapping**: JSON path-based mapping from Node A output to Node B input.
-- **FR-W6: Execution Engine**: Sequential traversal starting from the entry node.
-- **FR-W7: State Management**: Persistent execution context to track intermediate data across async steps.
-- **FR-W8: Error Handling**: Per-node retry policies and dedicated failure handling paths.
-
-```mermaid
-graph LR
-    A[Trigger] --> B[Input Node]
-    B --> C{Condition}
-    C -- True --> D[LLM Agent]
-    C -- False --> E[Default Action]
-    D --> F[API/App Call]
-    F --> G[Output Node]
-```
+## FR-A1: Create Agent
+- User must be able to:
+  - Provide:
+    - Name
+    - Description
+    - Instructions (system prompt)
+    - Model selection
+- System must persist agent configuration
 
 ---
 
-## 3. ⏱️ Triggers
-
-### 3.1 Objective
-Automatically initiate workflows or agents based on temporal schedules or external events.
-
-### 3.2 Functional Requirements
-
-- **FR-T1: Unified Registry**: Support for both Time-based and Event-based triggers.
-- **FR-T2: Time-Based**: Support standard Cron expressions for periodic execution.
-- **FR-T3: Event-Based**: Support for Webhooks and native App-based events (e.g., "New File in Drive").
-- **FR-T4/T5: Invocation**: Automatically generate payloads and execute the target target (workflow/agent) with data mapping.
+## FR-A2: Configure Agent Preferences
+- User must be able to:
+  - Select AI model
+  - Enable/disable:
+    - Self-updates
+    - Tool access
+- System must store preferences per agent
 
 ---
 
-## 4. 🧠 Skills
-
-### 4.1 Objective
-Provide modular, reusable, and structured capabilities that can be "taught" to agents.
-
-### 4.2 Functional Requirements
-
-- **FR-S1: Skill Definition**: Name, description, and highly specific prompt templates.
-- **FR-S2: Schema Enforcement**: Define expected output structure using JSON Schema.
-- **FR-S3: Injection**: Dynamically inject skill prompts into the agent's LLM context.
-- **FR-S5: Validation**: Automated validation of LLM output against the skill's defined schema.
-
-> [!TIP]
-> Skills are the building blocks of agent intelligence. Well-defined schemas ensure predictable data flow in complex workflows.
+## FR-A3: Attach Skills to Agent
+- User must be able to:
+  - Add/remove skills
+- System must:
+  - Maintain agent-skill mapping
+  - Restrict execution to attached skills only
 
 ---
 
-## 5. 🔌 Apps (Integrations)
-
-### 5.1 Objective
-Securely connect ScopeSentinel to the external tools and services users already use.
-
-### 5.2 Functional Requirements
-
-- **FR-AP1: Authentication**: Support for OAuth2 flows and API Key management.
-- **FR-AP2: Connection Management**: Centralized dashboard to view, refresh, or revoke app permissions.
-- **FR-AP3/AP4: Action Execution**: Standardized interface to interact with third-party APIs and receive structured responses.
-- **FR-AP5: Trigger Source**: Apps act as event emitters for workflow automation.
+## FR-A4: Attach Apps to Agent
+- User must be able to:
+  - Select connected apps
+- System must:
+  - Provide access credentials during execution
+  - Restrict access to selected apps only
 
 ---
 
-## 🔗 6. Cross-Component Interactions
-
-The power of ScopeSentinel comes from the interplay between its core modules:
-
-```mermaid
-sequenceDiagram
-    participant T as Trigger
-    participant W as Workflow
-    participant A as Agent
-    participant S as Skill
-    participant Ap as App
-
-    T->>W: Fire Event (+ Data)
-    W->>A: Invoke Agent Node
-    A->>S: Request Capability Structure
-    S-->>A: Return Schema & Prompt
-    A->>Ap: Execute Tool (if needed)
-    Ap-->>A: Tool Output
-    A-->>W: JSON/Text Response
-    W->>W: Next Node...
-```
+## FR-A5: Execute Agent (Manual)
+- User must be able to:
+  - Provide input/query
+- System must:
+  - Construct prompt using:
+    - Agent instructions
+    - Skill (if selected)
+    - Input data
+  - Invoke LLM
+  - Return response
 
 ---
 
-## 📊 7. Execution & Observability
-
-### 7.1 Objective
-Provide full transparency into every automated action taken by the platform.
-
-### 7.2 Functional Requirements
-- **FR-O1: Live Logging**: Real-time logging of trigger fires and node-by-node execution.
-- **FR-O2: Run History**: Persistent archive of every execution with searchable input/output payloads.
-- **FR-O3: Debugging**: "Time-travel" debugging allowing users to replay runs or inspect full execution traces.
+## FR-A6: Execute Agent (Programmatic)
+- System must support execution via:
+  - Workflow
+  - Trigger
+- Input must be passed as structured payload
 
 ---
 
-## 🔐 8. Access Control & Security
+## FR-A7: Agent Output Handling
+- System must support:
+  - Plain text output
+  - Structured JSON output
+- System must validate structured output if schema is defined
 
-### 8.1 Functional Requirements
+---
 
-> [!IMPORTANT]
-> User data isolation and credential security are non-negotiable architectural requirements.
+# 2. 🔄 WORKFLOWS
 
-- **FR-SEC1: Multi-Tenancy**: Strict isolation ensuring users only see their own agents, workflows, and connections.
-- **FR-SEC2: Credential Encryption**: All auth tokens and API keys must be encrypted at rest using industry-standard protocols.
+## Objective
+Allow users to define multi-step automation pipelines using a visual builder.
+
+---
+
+## FR-W1: Create Workflow
+- User must be able to:
+  - Define name and description
+- System must initialize an empty workflow graph
+
+---
+
+## FR-W2: Add Nodes
+- User must be able to add nodes of types:
+  - LLM Node
+  - API Node
+  - Condition Node
+  - Input/Output Node
+
+---
+
+## FR-W3: Configure Node
+
+### LLM Node
+- User must:
+  - Select agent
+  - Select skill (optional)
+  - Configure input mapping
+
+---
+
+### API Node
+- User must:
+  - Select app
+  - Select action
+  - Configure request payload
+
+---
+
+### Condition Node
+- User must define conditions:
+  - Equality
+  - Contains
+  - Numeric comparisons
+
+---
+
+## FR-W4: Connect Nodes
+- User must be able to:
+  - Define edges between nodes
+- System must:
+  - Maintain execution order
+  - Support branching logic
+
+---
+
+## FR-W5: Input/Output Mapping
+- System must:
+  - Allow mapping between node outputs and inputs
+  - Support JSON path-based mapping
+
+---
+
+## FR-W6: Execute Workflow
+- System must:
+  - Start from entry node
+  - Traverse nodes sequentially or conditionally
+  - Pass data between nodes
+
+---
+
+## FR-W7: Workflow State Management
+- System must:
+  - Maintain execution context:
+    - Node outputs
+    - Intermediate data
+- Context must persist across async execution
+
+---
+
+## FR-W8: Error Handling
+- System must:
+  - Support retry per node
+  - Support failure handling paths
+  - Log execution errors
+
+---
+
+# 3. ⏱️ TRIGGERS
+
+## Objective
+Automatically start workflows or agents based on time or external events.
+
+---
+
+## FR-T1: Create Trigger
+- User must define:
+  - Trigger type:
+    - Time-based
+    - Event-based
+  - Target:
+    - Workflow OR Agent
+
+---
+
+## FR-T2: Time-Based Trigger
+- User must provide:
+  - Cron expression
+- System must execute based on schedule
+
+---
+
+## FR-T3: Event-Based Trigger
+- System must support:
+  - Webhooks
+  - App-generated events
+
+---
+
+## FR-T4: Trigger Execution
+- On trigger:
+  - System must:
+    - Generate payload
+    - Invoke workflow or agent
+
+---
+
+## FR-T5: Trigger Input Mapping
+- User must be able to:
+  - Map event data to workflow/agent input
+
+---
+
+# 4. 🧠 SKILLS
+
+## Objective
+Provide reusable, structured AI capabilities.
+
+---
+
+## FR-S1: Create Skill
+- User must define:
+  - Name
+  - Description
+  - Prompt template
+  - Output structure
+
+---
+
+## FR-S2: Define Output Structure
+- System must support:
+  - JSON schema definition
+- Example:
+  - Task list
+  - Email structure
+
+---
+
+## FR-S3: Skill Invocation
+- System must:
+  - Inject skill prompt into agent execution
+  - Enforce output structure
+
+---
+
+## FR-S4: Skill Activation
+- Skill must be triggered:
+  - Explicitly (workflow selection)
+  - Implicitly (agent-driven, optional)
+
+---
+
+## FR-S5: Output Validation
+- System must:
+  - Validate output against schema
+  - Handle invalid responses (retry/fail)
+
+---
+
+# 5. 🔌 APPS (INTEGRATIONS)
+
+## Objective
+Enable interaction with external systems.
+
+---
+
+## FR-AP1: Connect App
+- User must:
+  - Authenticate via OAuth/API key
+- System must securely store credentials
+
+---
+
+## FR-AP2: Manage Connections
+- User must:
+  - View connected apps
+  - Refresh or revoke access
+
+---
+
+## FR-AP3: Use App in Workflow
+- System must:
+  - Provide list of actions
+- User must:
+  - Configure action inputs
+
+---
+
+## FR-AP4: Execute App Actions
+- System must:
+  - Call external APIs
+  - Handle responses
+  - Return structured output
+
+---
+
+## FR-AP5: App as Trigger Source
+- System must:
+  - Support event subscriptions
+- Example:
+  - File upload
+  - Task creation
+
+---
+
+# 6. 🔗 CROSS-COMPONENT INTERACTIONS
+
+---
+
+## FR-C1: Trigger → Workflow
+- Trigger must start workflow execution with payload
+
+---
+
+## FR-C2: Workflow → Agent
+- Workflow must invoke agent with input context
+
+---
+
+## FR-C3: Agent → Skill
+- Agent must use skill prompt and enforce schema
+
+---
+
+## FR-C4: Workflow → App
+- Workflow must execute app actions via API nodes
+
+---
+
+## FR-C5: Data Flow
+- System must:
+  - Maintain execution context across all steps
+
+---
+
+# 7. 📊 EXECUTION & OBSERVABILITY
+
+---
+
+## FR-O1: Execution Logs
+- System must log:
+  - Trigger execution
+  - Workflow steps
+  - Node outputs
+  - Errors
+
+---
+
+## FR-O2: Execution History
+- User must:
+  - View past executions
+  - Inspect inputs, outputs, errors
+
+---
+
+## FR-O3: Debugging
+- System must:
+  - Allow replay of executions
+  - Provide step-by-step trace
+
+---
+
+# 8. 🔐 SECURITY
+
+---
+
+## FR-SEC1: User Isolation
+- Users must only access their own:
+  - Agents
+  - Workflows
+  - Apps
+
+---
+
+## FR-SEC2: Credential Security
+- Tokens must be:
+  - Encrypted at rest

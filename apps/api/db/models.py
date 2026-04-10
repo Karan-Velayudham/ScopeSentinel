@@ -155,7 +155,8 @@ class Skill(SQLModel, table=True):
     id: str = Field(default_factory=_new_uuid, primary_key=True)
     org_id: str = Field(foreign_key="orgs.id", index=True)
     name: str = Field(index=True)
-    content: str = Field(description="The instructional prompt for this skill")
+    description: Optional[str] = Field(default=None)
+    instructions: str = Field(description="The instructional text injected into the agent system prompt")
     version: int = Field(default=1)
     is_active: bool = Field(default=True, index=True)
     

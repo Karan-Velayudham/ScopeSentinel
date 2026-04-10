@@ -12,7 +12,7 @@ from agents.coder_agent import CoderAgent, CoderOutput
 from agents.analyzer_agent import AnalyzerAgent, AnalyzerOutput
 from exceptions import ConfigurationError
 from io_capture import save_step_io_sync
-from db_sync import sync_run_progress, get_agent
+from db_sync import sync_run_progress, get_agent, get_skills_for_agent
 from tools.mcp_server import index_repository
 
 @activity.defn
@@ -93,6 +93,10 @@ async def planning_activity(args: dict) -> dict:
             if agent_data:
                 custom_prompt = agent_data.get("identity")
                 model_name = agent_data.get("model", model_name)
+                # Append skill instructions to system prompt
+                skills = await get_skills_for_agent(agent_id)
+                for skill in skills:
+                    custom_prompt += f"\n\n{skill['instructions']}"
         
         planner = PlannerAgent(model=model, system_prompt=custom_prompt)
         plan: PlannerOutput = await planner.plan(ticket_id, tool_registry)
@@ -156,6 +160,10 @@ async def coder_activity(args: dict) -> dict:
             if agent_data:
                 custom_prompt = agent_data.get("identity")
                 model_name = agent_data.get("model", model_name)
+                # Append skill instructions to system prompt
+                skills = await get_skills_for_agent(agent_id)
+                for skill in skills:
+                    custom_prompt += f"\n\n{skill['instructions']}"
 
         coder = CoderAgent(model=model, system_prompt=custom_prompt)
         coder_res: CoderOutput = await coder.code_with_validation(
@@ -211,6 +219,10 @@ async def analyzer_activity(args: dict) -> dict:
             if agent_data:
                 custom_prompt = agent_data.get("identity")
                 model_name = agent_data.get("model", model_name)
+                # Append skill instructions to system prompt
+                skills = await get_skills_for_agent(agent_id)
+                for skill in skills:
+                    custom_prompt += f"\n\n{skill['instructions']}"
 
         reconstructed_plan = PlannerOutput(
             ticket_id=ticket_id,

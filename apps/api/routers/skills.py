@@ -24,7 +24,8 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
         id=skill.id,
         org_id=skill.org_id,
         name=skill.name,
-        content=skill.content,
+        description=skill.description,
+        instructions=skill.instructions,
         version=skill.version,
         is_active=skill.is_active,
         created_at=skill.created_at,
@@ -42,7 +43,8 @@ async def create_skill(
     skill = Skill(
         org_id=org_id,
         name=body.name,
-        content=body.content,
+        description=body.description,
+        instructions=body.instructions,
         is_active=body.is_active,
     )
     session.add(skill)
@@ -111,8 +113,11 @@ async def update_skill(
     if body.name is not None:
         skill.name = body.name
         has_changes = True
-    if body.content is not None:
-        skill.content = body.content
+    if body.description is not None:
+        skill.description = body.description
+        has_changes = True
+    if body.instructions is not None:
+        skill.instructions = body.instructions
         has_changes = True
     if body.is_active is not None:
         skill.is_active = body.is_active

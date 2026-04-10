@@ -91,19 +91,19 @@ async def get_agent(agent_id: str) -> dict:
 
 async def get_skills_for_agent(agent_id: str) -> List[dict]:
     """
-    Fetch all skills associated with an agent.
+    Fetch all active skills associated with an agent.
     """
     try:
         async with engine.connect() as conn:
             sql = """
-                SELECT s.id, s.name, s.content, s.version 
+                SELECT s.id, s.name, s.instructions, s.version 
                 FROM skills s
                 JOIN agent_skill_links asl ON s.id = asl.skill_id
                 WHERE asl.agent_id = :id AND s.is_active = true
             """
             result = await conn.execute(text(sql), {"id": agent_id})
             return [
-                {"id": r[0], "name": r[1], "content": r[2], "version": r[3]}
+                {"id": r[0], "name": r[1], "instructions": r[2], "version": r[3]}
                 for r in result.fetchall()
             ]
     except Exception as e:
