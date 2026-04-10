@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { Layers, Plus, Search, Filter, MoreHorizontal, Pencil, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -76,20 +77,11 @@ function CreateSkillModal({ open, onClose, onCreated, editingSkill }: CreateSkil
     setSaving(true)
     setError(null)
     try {
-      let result: Skill
-      if (isEditing && editingSkill) {
-        result = await api.patch<Skill>(`/api/skills/${editingSkill.id}`, {
-          name: name.trim(),
-          description: description.trim() || null,
-          instructions: instructions.trim(),
-        })
-      } else {
-        result = await api.post<Skill>("/api/skills/", {
-          name: name.trim(),
-          description: description.trim() || null,
-          instructions: instructions.trim(),
-        })
-      }
+      const result = await api.post<Skill>("/api/skills/", {
+        name: name.trim(),
+        description: description.trim() || null,
+        instructions: instructions.trim(),
+      })
       onCreated(result)
       onClose()
     } catch (e: any) {
@@ -194,12 +186,13 @@ function CreateSkillModal({ open, onClose, onCreated, editingSkill }: CreateSkil
 
 export default function SkillsPage() {
   const api = useApi()
+  const router = useRouter()
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
-  const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const fetchSkills = useCallback(async () => {
     if (!api.orgId) return
@@ -219,24 +212,21 @@ export default function SkillsPage() {
 
   // Close menu on outside click
   useEffect(() => {
-    const handler = () => setOpenMenuId(null)
-    document.addEventListener("click", handler)
-    return () => document.removeEventListener("click", handler)
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
   }, [])
 
   const handleCreated = (skill: Skill) => {
-    if (editingSkill) {
-      setSkills((prev) => prev.map((s) => (s.id === skill.id ? skill : s)))
-    } else {
-      setSkills((prev) => [skill, ...prev])
-    }
-    setEditingSkill(null)
+    setSkills((prev) => [skill, ...prev])
   }
 
-  const handleEdit = (skill: Skill) => {
-    setEditingSkill(skill)
-    setModalOpen(true)
-    setOpenMenuId(null)
+  const handleOpen = (skill: Skill) => {
+    router.push(`/skills/${skill.id}`)
   }
 
   const handleDelete = async (skill: Skill) => {
@@ -251,7 +241,6 @@ export default function SkillsPage() {
   }
 
   const openCreate = () => {
-    setEditingSkill(null)
     setModalOpen(true)
   }
 
@@ -268,9 +257,8 @@ export default function SkillsPage() {
     <>
       <CreateSkillModal
         open={modalOpen}
-        onClose={() => { setModalOpen(false); setEditingSkill(null) }}
+        onClose={() => setModalOpen(false)}
         onCreated={handleCreated}
-        editingSkill={editingSkill}
       />
 
       <div className="flex flex-col gap-6">
@@ -313,7 +301,7 @@ export default function SkillsPage() {
         {loading ? (
           <div className="py-12 text-center text-muted-foreground">Loading skills...</div>
         ) : (
-          <div className="rounded-lg border overflow-hidden">
+          <div className="rounded-lg border bg-card">
             {/* Table Header */}
             <div className="grid grid-cols-[1fr_160px_140px_40px] px-4 py-3 bg-muted/30 border-b text-xs font-medium text-muted-foreground uppercase tracking-wide">
               <span>Skills • {filteredSkills.length}</span>
@@ -343,7 +331,8 @@ export default function SkillsPage() {
               filteredSkills.map((skill, idx) => (
                 <div
                   key={skill.id}
-                  className={`grid grid-cols-[1fr_160px_140px_40px] px-4 py-4 items-center hover:bg-muted/20 transition-colors ${idx < filteredSkills.length - 1 ? "border-b" : ""}`}
+                  onClick={() => router.push(`/skills/${skill.id}`)}
+                  className={`grid grid-cols-[1fr_160px_140px_40px] px-4 py-4 items-center hover:bg-muted/20 transition-colors cursor-pointer ${idx < filteredSkills.length - 1 ? "border-b" : ""}`}
                 >
                   {/* Name + Description */}
                   <div className="flex items-center gap-3 min-w-0">
@@ -369,10 +358,11 @@ export default function SkillsPage() {
                   </span>
 
                   {/* Actions menu */}
-                  <div className="relative flex justify-end">
+                  <div ref={menuRef} className="relative flex justify-end">
                     <button
                       id={`skill-menu-${skill.id}`}
                       className="p-1 rounded hover:bg-muted transition-colors"
+                      onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation()
                         setOpenMenuId(openMenuId === skill.id ? null : skill.id)
@@ -383,19 +373,25 @@ export default function SkillsPage() {
 
                     {openMenuId === skill.id && (
                       <div
-                        className="absolute right-0 top-7 z-20 w-36 rounded-md border bg-popover shadow-md py-1"
-                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-0 top-7 z-[100] w-40 rounded-md border bg-popover shadow-xl py-1 mt-1"
                       >
                         <button
                           className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted transition-colors"
-                          onClick={() => handleEdit(skill)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleOpen(skill)
+                            setOpenMenuId(null)
+                          }}
                         >
                           <Pencil className="h-3.5 w-3.5" />
-                          Edit
+                          Open
                         </button>
                         <button
                           className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-colors"
-                          onClick={() => handleDelete(skill)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDelete(skill)
+                          }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           Delete
