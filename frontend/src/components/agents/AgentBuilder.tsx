@@ -31,33 +31,48 @@ interface Connector {
 interface FormData {
     name: string;
     description: string;
-    identity: string;
+    instructions: string;
     model: string;
-    tools: string[];
+    app_connections: string[];
     skills: string[];
-    max_iterations: number;
-    memory_mode: "session" | "long_term";
+    timeout_seconds: number;
     self_improve: boolean;
 }
 
-export function AgentBuilder() {
+interface AgentBuilderProps {
+    initialData?: {
+        id: string;
+        name: string;
+        description?: string | null;
+        instructions: string;
+        model: string;
+        app_connections: string[];
+        skills: string[];
+        timeout_seconds: number;
+        self_improve?: boolean;
+    };
+    isEditing?: boolean;
+}
+
+export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderProps) {
     const router = useRouter()
     const api = useApi()
     
     // Form State
     const [formData, setFormData] = useState<FormData>({
-        name: "Ready Maker",
-        description: "",
-        identity: "",
-        model: "claude-3-5-sonnet-20241022",
-        tools: [],
-        skills: [],
-        max_iterations: 10,
-        memory_mode: "session",
-        self_improve: true
+        name: initialData?.name || "Ready Maker",
+        description: initialData?.description || "",
+        instructions: initialData?.instructions || "",
+        model: initialData?.model || "claude-3-5-sonnet-20241022",
+        app_connections: initialData?.app_connections || [],
+        skills: initialData?.skills || [],
+        timeout_seconds: initialData?.timeout_seconds || 60,
+        self_improve: initialData?.self_improve ?? true
     })
     
     const [msg, setMsg] = useState("")
+    const [executing, setExecuting] = useState(false)
+    const [executionResult, setExecutionResult] = useState<string | null>(null)
     const [skills, setSkills] = useState<Skill[]>([])
     const [connectors, setConnectors] = useState<Connector[]>([])
     const [loading, setLoading] = useState(true)
@@ -88,15 +103,21 @@ export function AgentBuilder() {
         if (!api.orgId) return;
         setSaving(true)
         try {
-            await api.post('/api/agents/', {
-                name: formData.name,
-                description: formData.description,
-                identity: formData.identity,
-                model: formData.model,
-                tools: formData.tools,
-                skills: formData.skills,
-                max_iterations: formData.max_iterations,
-                memory_mode: formData.memory_mode
+            const url = isEditing && initialData ? `/api/agents/${initialData.id}` : '/api/agents/';
+            const method = isEditing ? 'PATCH' : 'POST';
+            
+            await api.fetch(url, {
+                method,
+                body: JSON.stringify({
+                    name: formData.name,
+                    description: formData.description,
+                    instructions: formData.instructions,
+                    model: formData.model,
+                    app_connections: formData.app_connections,
+                    skills: formData.skills,
+                    timeout_seconds: formData.timeout_seconds,
+                    status: "active"
+                })
             })
             router.push('/agents')
         } catch (err) {
@@ -106,13 +127,37 @@ export function AgentBuilder() {
         }
     }
 
-    const toggleTool = (toolKey: string) => {
+    const toggleAppConnection = (connectorId: string) => {
         setFormData((prev: FormData) => ({
             ...prev,
-            tools: prev.tools.includes(toolKey) 
-                ? prev.tools.filter((t: string) => t !== toolKey)
-                : [...prev.tools, toolKey]
+            app_connections: prev.app_connections.includes(connectorId) 
+                ? prev.app_connections.filter((id: string) => id !== connectorId)
+                : [...prev.app_connections, connectorId]
         }))
+    }
+
+    const handleExecute = async () => {
+        if (!isEditing || !initialData?.id) {
+            alert("Please save the agent first before testing.")
+            return;
+        }
+        if (!msg.trim()) return;
+
+        setExecuting(true)
+        setExecutionResult(null)
+        try {
+            const inputData = { task: msg }
+            const res = await api.post<{ output: string }>(`/api/agents/${initialData.id}/execute`, {
+                input: inputData,
+                skill_ids: formData.skills,
+                triggered_by: "manual"
+            })
+            setExecutionResult(res.output || "No output returned.")
+        } catch (err: any) {
+            setExecutionResult(`Error: ${err.message || String(err)}`)
+        } finally {
+            setExecuting(false)
+        }
     }
 
     const toggleSkill = (skillId: string) => {
@@ -182,7 +227,21 @@ export function AgentBuilder() {
                         <div className="absolute inset-0 border rounded-full opacity-20 scale-[1.15]"></div>
                     </div>
 
-                    <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-foreground mb-10">Hi Karan, how can I help you?</h1>
+                    {!executionResult && !executing && (
+                        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-foreground mb-10 text-center">
+                            {isEditing ? `Test ${formData.name}` : "Hi, how can I help you?"}
+                        </h1>
+                    )}
+
+                    {(executing || executionResult) && (
+                        <div className="w-full max-w-2xl mb-8 p-4 bg-muted/30 rounded-xl border">
+                            {executing ? (
+                                <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Executing agent...</div>
+                            ) : (
+                                <div className="whitespace-pre-wrap text-sm font-medium">{executionResult}</div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Chat Input */}
                     <div className="w-full max-w-2xl relative">
@@ -204,9 +263,11 @@ export function AgentBuilder() {
                                 </div>
                                 <Button 
                                     size="icon" 
-                                    className={`h-8 w-8 rounded-full transition-all duration-300 ${msg.length > 0 ? "bg-black text-white" : "bg-gradient-to-tr from-rose-300 to-indigo-400 text-white"}`}
+                                    onClick={handleExecute}
+                                    disabled={executing || !msg.trim()}
+                                    className={`h-8 w-8 rounded-full transition-all duration-300 ${msg.length > 0 ? "bg-black text-white dark:bg-white dark:text-black" : "bg-gradient-to-tr from-rose-300 to-indigo-400 text-white"}`}
                                 >
-                                    <ArrowUp className="w-4 h-4 text-white" />
+                                    {executing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
                                 </Button>
                             </div>
                         </div>
@@ -261,8 +322,8 @@ export function AgentBuilder() {
                                 <textarea
                                     className="w-full outline-none resize-none text-[13px] min-h-[90px] bg-transparent placeholder:text-muted-foreground/60 focus:ring-0 font-medium"
                                     placeholder="Add instructions for the agent..."
-                                    value={formData.identity}
-                                    onChange={e => setFormData({ ...formData, identity: e.target.value })}
+                                    value={formData.instructions}
+                                    onChange={e => setFormData({ ...formData, instructions: e.target.value })}
                                 />
                             </div>
                             <div className="px-1 pb-1 pt-0 flex justify-end">
@@ -327,21 +388,17 @@ export function AgentBuilder() {
                                             </div>
                                             <span className="font-semibold">{conn.connector_name}</span>
                                         </div>
+                                        <Switch 
+                                            checked={formData.app_connections.includes(conn.connector_id)} 
+                                            onCheckedChange={() => toggleAppConnection(conn.connector_id)} 
+                                        />
                                     </div>
                                     <div className="pl-10 space-y-1 py-1">
-                                        {conn.tools.map((tool: Tool) => {
-                                            const key = `${conn.connector_id}:${tool.name}`
-                                            const active = formData.tools.includes(key)
-                                            return (
-                                                <div key={key} className="flex items-center justify-between py-1 px-1 hover:bg-zinc-50 rounded transition-colors group">
-                                                    <span className="text-[12px] font-medium text-muted-foreground group-hover:text-foreground">{tool.name}</span>
-                                                    <Switch 
-                                                        checked={active} 
-                                                        onCheckedChange={() => toggleTool(key)} 
-                                                    />
-                                                </div>
-                                            )
-                                        })}
+                                        {conn.tools.map((tool: Tool) => (
+                                            <div key={tool.name} className="flex items-center justify-between py-1 px-1 hover:bg-zinc-50 rounded transition-colors group">
+                                                <span className="text-[12px] font-medium text-muted-foreground group-hover:text-foreground">{tool.name}</span>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             ))}

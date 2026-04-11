@@ -92,6 +92,24 @@ class TriggerType(str, enum.Enum):
     EVENT = "event"         # Fire on matching Redpanda event (Jira, Slack, Teams, etc.)
 
 
+class AgentStatus(str, enum.Enum):
+    ACTIVE = "active"
+    DRAFT = "draft"
+    ARCHIVED = "archived"
+
+
+class AgentRunStatus(str, enum.Enum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class AgentRunTriggeredBy(str, enum.Enum):
+    MANUAL = "manual"
+    WORKFLOW = "workflow"
+    TRIGGER = "trigger"
+
+
 # ---------------------------------------------------------------------------
 # Organisation
 # ---------------------------------------------------------------------------
@@ -149,6 +167,12 @@ class AgentSkillLink(SQLModel, table=True):
     skill_id: str = Field(foreign_key="skills.id", primary_key=True)
 
 
+class AgentAppConnectionLink(SQLModel, table=True):
+    __tablename__ = "agent_app_connections"
+    agent_id: str = Field(foreign_key="agents.id", primary_key=True)
+    connection_id: str = Field(foreign_key="oauth_connections.id", primary_key=True)
+
+
 class Skill(SQLModel, table=True):
     __tablename__ = "skills"
 
@@ -178,18 +202,14 @@ class Agent(SQLModel, table=True):
     org_id: str = Field(foreign_key="orgs.id", index=True)
     name: str = Field(index=True)
     description: Optional[str] = Field(default=None)
-    identity: str = Field(description="The system prompt/identity of the agent")
+    instructions: str = Field(description="The system prompt/instructions of the agent")
     model: str = Field(default="gpt-4o")
-    # Store tools as a comma-separated string or JSON-encoded list
-    tools_json: str = Field(default="[]")
-    
-    # New fields for Phase 1
-    max_iterations: int = Field(default=10)
-    memory_mode: MemoryMode = Field(
-        default=MemoryMode.SESSION,
-        sa_type=Enum(MemoryMode, native_enum=False)
+    timeout_seconds: int = Field(default=60)
+    status: AgentStatus = Field(
+        default=AgentStatus.ACTIVE,
+        sa_type=Enum(AgentStatus, native_enum=False),
+        index=True
     )
-    is_active: bool = Field(default=True, index=True)
 
     created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
     updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
@@ -197,7 +217,9 @@ class Agent(SQLModel, table=True):
     # Relationships
     org: Optional[Org] = Relationship(back_populates="agents")
     runs: list["WorkflowRun"] = Relationship(back_populates="agent")
+    agent_runs: list["AgentRun"] = Relationship(back_populates="agent")
     skills: list[Skill] = Relationship(back_populates="agents", link_model=AgentSkillLink)
+    app_connections: list["OAuthConnection"] = Relationship(back_populates="agents", link_model=AgentAppConnectionLink)
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +405,7 @@ class OAuthConnection(SQLModel, table=True):
     # Relationships
     org: Optional[Org] = Relationship(back_populates="oauth_connections")
     user: Optional[User] = Relationship(back_populates="oauth_connections")
+    agents: list["Agent"] = Relationship(back_populates="app_connections", link_model=AgentAppConnectionLink)
 
 
 # ---------------------------------------------------------------------------
@@ -435,3 +458,36 @@ class TriggerDefinition(SQLModel, table=True):
     # Relationships
     org: Optional[Org] = Relationship(back_populates="trigger_definitions")
     agent: Optional["Agent"] = Relationship()
+
+
+# ---------------------------------------------------------------------------
+# Agent Run
+# ---------------------------------------------------------------------------
+
+class AgentRun(SQLModel, table=True):
+    __tablename__ = "agent_runs"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    agent_id: str = Field(foreign_key="agents.id", index=True)
+    
+    triggered_by: AgentRunTriggeredBy = Field(sa_type=Enum(AgentRunTriggeredBy, native_enum=False))
+    source_id: Optional[str] = Field(default=None) # workflow_run_id or trigger_id (nullable)
+    skill_ids: Optional[str] = Field(default=None, description="JSON array of skill IDs")
+    
+    input_json: str = Field(default="{}")
+    prompt_used: Optional[str] = Field(default=None)
+    output: Optional[str] = Field(default=None)
+    
+    status: AgentRunStatus = Field(
+        default=AgentRunStatus.RUNNING,
+        sa_type=Enum(AgentRunStatus, native_enum=False),
+        index=True
+    )
+    error_message: Optional[str] = Field(default=None)
+    
+    started_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    completed_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
+
+    # Relationships
+    agent: Optional[Agent] = Relationship(back_populates="agent_runs")

@@ -8,10 +8,11 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useApi } from "@/hooks/use-api"
 import Link from "next/link"
+import { AgentResponse } from "@/types/agent"
 
 export default function AgentsPage() {
     const api = useApi()
-    const [agents, setAgents] = useState<any[]>([])
+    const [agents, setAgents] = useState<AgentResponse[]>([])
     const [loading, setLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState("")
 
@@ -19,7 +20,7 @@ export default function AgentsPage() {
         if (!api.orgId) return
 
         try {
-            const data = await api.get<{ items: any[] }>('/api/agents/')
+            const data = await api.get<{ items: AgentResponse[] }>('/api/agents/')
             setAgents(data.items || [])
         } catch (e) {
             console.error("Failed to fetch agents", e)
@@ -98,17 +99,19 @@ export default function AgentsPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="flex-1">
-                            <div className="text-xs text-muted-foreground mb-2">Tools:</div>
-                            <div className="flex flex-wrap gap-1">
-                                {agent.tools && agent.tools.length > 0 ? (
-                                    agent.tools.map((t: string) => (
-                                        <Badge key={t} variant="secondary" className="text-[10px] px-1.5 py-0">
-                                            {t}
-                                        </Badge>
-                                    ))
-                                ) : (
-                                    <span className="text-xs italic text-muted-foreground">None</span>
-                                )}
+                            <div className="flex gap-4">
+                                <div>
+                                    <div className="text-xs text-muted-foreground mb-1">Skills</div>
+                                    <div className="text-sm font-semibold">
+                                        {agent.skills?.length || 0}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-muted-foreground mb-1">Apps Connected</div>
+                                    <div className="text-sm font-semibold">
+                                        {agent.app_connections?.length || 0}
+                                    </div>
+                                </div>
                             </div>
                         </CardContent>
                         <CardFooter className="pt-4 border-t flex gap-2">

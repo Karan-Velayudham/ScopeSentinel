@@ -288,42 +288,71 @@ class DashboardStatsResponse(BaseModel):
 class AgentCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
-    identity: str
+    instructions: str
     model: str = "gpt-4o"
-    tools: list[str] = Field(default_factory=list)
+    timeout_seconds: int = 60
+    app_connections: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
-    max_iterations: int = 10
-    memory_mode: Literal["session", "long_term"] = "session"
+    status: Literal["active", "draft", "archived"] = "active"
 
 class AgentUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    identity: Optional[str] = None
+    instructions: Optional[str] = None
     model: Optional[str] = None
-    tools: Optional[list[str]] = None
+    timeout_seconds: Optional[int] = None
+    app_connections: Optional[list[str]] = None
     skills: Optional[list[str]] = None
-    max_iterations: Optional[int] = None
-    memory_mode: Optional[Literal["session", "long_term"]] = None
-    is_active: Optional[bool] = None
+    status: Optional[Literal["active", "draft", "archived"]] = None
 
 class AgentResponse(BaseModel):
     id: str
     org_id: str
     name: str
     description: Optional[str]
-    identity: str
+    instructions: str
     model: str
-    tools: list[str]
+    timeout_seconds: int
+    app_connections: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
-    max_iterations: int
-    memory_mode: str
-    is_active: bool
+    status: str
     created_at: datetime
     updated_at: datetime
 
 class AgentListResponse(BaseModel):
     items: list[AgentResponse]
     meta: PaginationMeta
+
+class AgentExecuteRequest(BaseModel):
+    input: dict[str, Any]
+    skill_ids: list[str] = Field(default_factory=list)
+    triggered_by: Literal["manual", "workflow", "trigger"] = "manual"
+    source_id: Optional[str] = None
+
+class AgentExecuteResponse(BaseModel):
+    run_id: str
+    status: str
+    output: Optional[str] = None
+    error: Optional[str] = None
+
+class AgentRunResponse(BaseModel):
+    id: str
+    agent_id: str
+    triggered_by: str
+    status: str
+    created_at: datetime
+    completed_at: Optional[datetime]
+
+class AgentRunListResponse(BaseModel):
+    items: list[AgentRunResponse]
+    meta: PaginationMeta
+
+class AgentRunDetailResponse(AgentRunResponse):
+    skill_ids: list[str] = Field(default_factory=list)
+    input_json: str
+    prompt_used: Optional[str]
+    output: Optional[str]
+    error_message: Optional[str]
 
 
 # ---------------------------------------------------------------------------

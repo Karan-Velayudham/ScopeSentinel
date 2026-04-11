@@ -6,7 +6,7 @@ from sqlmodel import select, func
 
 from sqlalchemy.orm import selectinload
 from auth.api_keys import CurrentUserDep
-from db.models import Agent, Skill, AgentSkillLink
+from db.models import Agent, Skill, AgentSkillLink, AgentStatus, OAuthConnection, AgentAppConnectionLink
 from db.session import TenantSessionDep
 from schemas import (
     PaginationMeta,
@@ -14,19 +14,36 @@ from schemas import (
     AgentUpdateRequest,
     AgentResponse,
     AgentListResponse,
+    AgentExecuteRequest,
+    AgentExecuteResponse,
+    AgentRunResponse,
+    AgentRunListResponse,
+    AgentRunDetailResponse,
 )
+from db.models import AgentRun, AgentRunStatus, AgentRunTriggeredBy
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-def _agent_to_response(agent: Agent, skills: Optional[list[Skill]] = None) -> AgentResponse:
-    tools = []
-    try:
-        tools = json.loads(agent.tools_json)
-    except Exception:
-        pass
-    
+def build_prompt(agent: Agent, skills: list[Skill], user_input: dict) -> str:
+    parts = []
+
+    # 1. Agent instructions (always)
+    parts.append(f"[System Instructions]\n{agent.instructions}")
+
+    # 2. Skill instructions (multiple skills supported)
+    if skills:
+        for skill in skills:
+            parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
+
+    # 3. User input
+    parts.append(f"[Input]\n{json.dumps(user_input)}")
+
+    system_prompt = "\n\n".join(parts)
+    return system_prompt
+
+def _agent_to_response(agent: Agent, skills: Optional[list[Skill]] = None, app_connections: Optional[list[OAuthConnection]] = None) -> AgentResponse:
     # Use provided skills or extract from agent if already loaded (selectinload)
     skill_ids = []
     if skills is not None:
@@ -39,18 +56,26 @@ def _agent_to_response(agent: Agent, skills: Optional[list[Skill]] = None) -> Ag
             # Fallback to empty if not loaded to avoid lazy load error
             skill_ids = []
 
+    app_conn_ids = []
+    if app_connections is not None:
+        app_conn_ids = [c.id for c in app_connections]
+    else:
+        try:
+            app_conn_ids = [c.id for c in agent.app_connections]
+        except Exception:
+            app_conn_ids = []
+
     return AgentResponse(
         id=agent.id,
         org_id=agent.org_id,
         name=agent.name,
         description=agent.description,
-        identity=agent.identity,
+        instructions=agent.instructions,
         model=agent.model,
-        tools=tools,
+        timeout_seconds=agent.timeout_seconds,
+        app_connections=app_conn_ids,
         skills=skill_ids,
-        max_iterations=agent.max_iterations,
-        memory_mode=agent.memory_mode,
-        is_active=agent.is_active,
+        status=agent.status.value,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
     )
@@ -67,24 +92,31 @@ async def create_agent(
         org_id=org_id,
         name=body.name,
         description=body.description,
-        identity=body.identity,
+        instructions=body.instructions,
         model=body.model,
-        tools_json=json.dumps(body.tools),
-        max_iterations=body.max_iterations,
-        memory_mode=body.memory_mode,
+        timeout_seconds=body.timeout_seconds,
+        status=body.status,
     )
     
     if body.skills:
         # Resolve skills for the org
         skills = (await session.exec(select(Skill).where(Skill.org_id == org_id, Skill.id.in_(body.skills)))).all()
-        agent.skills = skills
+        agent.skills = list(skills)
+
+    if body.app_connections:
+        connections = (await session.exec(select(OAuthConnection).where(OAuthConnection.org_id == org_id, OAuthConnection.id.in_(body.app_connections)))).all()
+        agent.app_connections = list(connections)
 
     session.add(agent)
     await session.commit()
     # Skip refresh to avoid potential 500 during session-persisted refresh
     
     logger.info("api.agent_created", agent_id=agent.id, org_id=org_id)
-    return _agent_to_response(agent, skills=skills if body.skills else [])
+    return _agent_to_response(
+        agent, 
+        skills=agent.skills if body.skills else [],
+        app_connections=agent.app_connections if body.app_connections else []
+    )
 
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
@@ -95,10 +127,10 @@ async def list_agents(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> AgentListResponse:
     org_id = getattr(request.state, "org_id", None) or current_user.org_id
-    query = select(Agent).where(Agent.org_id == org_id).options(selectinload(Agent.skills)).order_by(Agent.created_at.desc())
+    query = select(Agent).where(Agent.org_id == org_id).options(selectinload(Agent.skills), selectinload(Agent.app_connections)).order_by(Agent.created_at.desc())
     
     count_query = select(func.count()).select_from(
-        select(Agent).where(Agent.org_id == org_id).subquery()
+        select(Agent.id).where(Agent.org_id == org_id).subquery()
     )
     total = (await session.exec(count_query)).one()
     
@@ -123,7 +155,10 @@ async def get_agent(
     request: Request,
 ) -> AgentResponse:
     org_id = getattr(request.state, "org_id", None) or current_user.org_id
-    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id))).first()
+    agent = (await session.exec(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+        .options(selectinload(Agent.skills), selectinload(Agent.app_connections))
+    )).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return _agent_to_response(agent)
@@ -137,7 +172,10 @@ async def update_agent(
     request: Request,
 ) -> AgentResponse:
     org_id = getattr(request.state, "org_id", None) or current_user.org_id
-    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id))).first()
+    agent = (await session.exec(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+        .options(selectinload(Agent.skills), selectinload(Agent.app_connections))
+    )).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
         
@@ -149,28 +187,25 @@ async def update_agent(
     if body.description is not None:
         agent.description = body.description
         has_changes = True
-    if body.identity is not None:
-        agent.identity = body.identity
+    if body.instructions is not None:
+        agent.instructions = body.instructions
         has_changes = True
     if body.model is not None:
         agent.model = body.model
         has_changes = True
-    if body.tools is not None:
-        agent.tools_json = json.dumps(body.tools)
+    if body.timeout_seconds is not None:
+        agent.timeout_seconds = body.timeout_seconds
+        has_changes = True
+    if body.app_connections is not None:
+        connections = (await session.exec(select(OAuthConnection).where(OAuthConnection.org_id == org_id, OAuthConnection.id.in_(body.app_connections)))).all()
+        agent.app_connections = list(connections)
         has_changes = True
     if body.skills is not None:
-        # Update skills many-to-many
         skills = (await session.exec(select(Skill).where(Skill.org_id == org_id, Skill.id.in_(body.skills)))).all()
         agent.skills = list(skills)
         has_changes = True
-    if body.max_iterations is not None:
-        agent.max_iterations = body.max_iterations
-        has_changes = True
-    if body.memory_mode is not None:
-        agent.memory_mode = body.memory_mode
-        has_changes = True
-    if body.is_active is not None:
-        agent.is_active = body.is_active
+    if body.status is not None:
+        agent.status = body.status
         has_changes = True
         
     if has_changes:
@@ -198,3 +233,272 @@ async def delete_agent(
     await session.delete(agent)
     await session.commit()
     logger.info("api.agent_deleted", agent_id=agent_id, org_id=org_id)
+
+
+# ---------------------------------------------------------------------------
+# Skills & Apps Attach/Detach
+# ---------------------------------------------------------------------------
+
+@router.post("/{agent_id}/skills", response_model=AgentResponse)
+async def attach_skill(
+    agent_id: str,
+    body: dict,
+    session: TenantSessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+) -> AgentResponse:
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id).options(selectinload(Agent.skills), selectinload(Agent.app_connections)))).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+        
+    skill_id = body.get("skill_id")
+    if not skill_id:
+        raise HTTPException(status_code=422, detail="Missing skill_id")
+
+    skill = (await session.exec(select(Skill).where(Skill.id == skill_id, Skill.org_id == org_id))).first()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+        
+    if not any(s.id == skill_id for s in agent.skills):
+        agent.skills.append(skill)
+        session.add(agent)
+        await session.commit()
+        
+    return _agent_to_response(agent)
+
+
+@router.delete("/{agent_id}/skills/{skill_id}", response_model=AgentResponse)
+async def detach_skill(
+    agent_id: str,
+    skill_id: str,
+    session: TenantSessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+) -> AgentResponse:
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id).options(selectinload(Agent.skills), selectinload(Agent.app_connections)))).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+        
+    agent.skills = [s for s in agent.skills if s.id != skill_id]
+    session.add(agent)
+    await session.commit()
+    
+    return _agent_to_response(agent)
+
+
+@router.post("/{agent_id}/apps", response_model=AgentResponse)
+async def attach_app(
+    agent_id: str,
+    body: dict,
+    session: TenantSessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+) -> AgentResponse:
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id).options(selectinload(Agent.skills), selectinload(Agent.app_connections)))).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+        
+    connection_id = body.get("connection_id")
+    if not connection_id:
+        raise HTTPException(status_code=422, detail="Missing connection_id")
+
+    connection = (await session.exec(select(OAuthConnection).where(OAuthConnection.id == connection_id, OAuthConnection.org_id == org_id))).first()
+    if not connection:
+        raise HTTPException(status_code=404, detail="OAuth connection not found")
+        
+    if not any(c.id == connection_id for c in agent.app_connections):
+        agent.app_connections.append(connection)
+        session.add(agent)
+        await session.commit()
+        
+    return _agent_to_response(agent)
+
+
+@router.delete("/{agent_id}/apps/{connection_id}", response_model=AgentResponse)
+async def detach_app(
+    agent_id: str,
+    connection_id: str,
+    session: TenantSessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+) -> AgentResponse:
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    agent = (await session.exec(select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id).options(selectinload(Agent.skills), selectinload(Agent.app_connections)))).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+        
+    agent.app_connections = [c for c in agent.app_connections if c.id != connection_id]
+    session.add(agent)
+    await session.commit()
+    
+    return _agent_to_response(agent)
+
+
+# ---------------------------------------------------------------------------
+# Execution (Sync) & Runs
+# ---------------------------------------------------------------------------
+
+@router.post("/{agent_id}/execute", response_model=AgentExecuteResponse, status_code=status.HTTP_202_ACCEPTED)
+async def execute_agent(
+    agent_id: str,
+    body: AgentExecuteRequest,
+    session: TenantSessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+) -> AgentExecuteResponse:
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    
+    agent = (await session.exec(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+        .options(selectinload(Agent.skills), selectinload(Agent.app_connections))
+    )).first()
+    
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+        
+    # Validate requested skills are attached to this agent
+    skills_to_use = []
+    if body.skill_ids:
+        agent_skill_ids = {s.id for s in agent.skills}
+        invalid_skills = set(body.skill_ids) - agent_skill_ids
+        if invalid_skills:
+             raise HTTPException(status_code=400, detail=f"Skills not attached to agent: {invalid_skills}")
+        
+        # Load the skill objects to get instructions
+        skills_to_use = [s for s in agent.skills if s.id in body.skill_ids]
+        
+    prompt = build_prompt(agent, skills_to_use, body.input)
+    
+    run_record = AgentRun(
+        org_id=org_id,
+        agent_id=agent.id,
+        triggered_by=AgentRunTriggeredBy(body.triggered_by),
+        source_id=body.source_id,
+        skill_ids=json.dumps(body.skill_ids) if body.skill_ids else "[]",
+        input_json=json.dumps(body.input),
+        prompt_used=prompt,
+        status=AgentRunStatus.RUNNING,
+    )
+    session.add(run_record)
+    await session.commit()
+    
+    # Execute LLM inline synchronously
+    try:
+        from litellm import acompletion
+        
+        # litellm expects messages list
+        messages = [
+            {"role": "user", "content": prompt}
+        ]
+        
+        response = await acompletion(
+            model=agent.model,
+            messages=messages,
+            timeout=agent.timeout_seconds,
+        )
+        
+        output_content = response.choices[0].message.content
+        
+        run_record.status = AgentRunStatus.COMPLETED
+        run_record.output = output_content
+        import datetime
+        run_record.completed_at = datetime.datetime.now(datetime.timezone.utc)
+        
+    except Exception as e:
+        logger.error("agent_execution_failed", error=str(e), agent_id=agent.id, run_id=run_record.id)
+        run_record.status = AgentRunStatus.FAILED
+        run_record.error_message = str(e)
+        import datetime
+        run_record.completed_at = datetime.datetime.now(datetime.timezone.utc)
+        
+    session.add(run_record)
+    await session.commit()
+    
+    return AgentExecuteResponse(
+        run_id=run_record.id,
+        status=run_record.status.value,
+        output=run_record.output,
+        error=run_record.error_message
+    )
+
+
+@router.get("/{agent_id}/runs", response_model=AgentRunListResponse)
+async def list_agent_runs(
+    agent_id: str,
+    session: TenantSessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> AgentRunListResponse:
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    
+    query = select(AgentRun).where(AgentRun.org_id == org_id, AgentRun.agent_id == agent_id).order_by(AgentRun.started_at.desc())
+    
+    count_query = select(func.count()).select_from(
+        select(AgentRun.id).where(AgentRun.org_id == org_id, AgentRun.agent_id == agent_id).subquery()
+    )
+    total = (await session.exec(count_query)).one()
+    
+    offset = (page - 1) * page_size
+    runs = (await session.exec(query.offset(offset).limit(page_size))).all()
+    
+    items = []
+    for run in runs:
+        items.append(AgentRunResponse(
+            id=run.id,
+            agent_id=run.agent_id,
+            triggered_by=run.triggered_by.value,
+            status=run.status.value,
+            created_at=run.started_at,
+            completed_at=run.completed_at,
+        ))
+        
+    return AgentRunListResponse(
+        items=items,
+        meta=PaginationMeta(
+            total=total,
+            page=page,
+            page_size=page_size,
+            has_next=(offset + page_size) < total,
+        ),
+    )
+
+
+@router.get("/{agent_id}/runs/{run_id}", response_model=AgentRunDetailResponse)
+async def get_agent_run(
+    agent_id: str,
+    run_id: str,
+    session: TenantSessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+) -> AgentRunDetailResponse:
+    org_id = getattr(request.state, "org_id", None) or current_user.org_id
+    
+    run = (await session.exec(select(AgentRun).where(AgentRun.id == run_id, AgentRun.agent_id == agent_id, AgentRun.org_id == org_id))).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+        
+    skill_ids_list = []
+    try:
+        skill_ids_list = json.loads(run.skill_ids) if run.skill_ids else []
+    except Exception:
+        pass
+        
+    return AgentRunDetailResponse(
+        id=run.id,
+        agent_id=run.agent_id,
+        triggered_by=run.triggered_by.value,
+        status=run.status.value,
+        created_at=run.started_at,
+        completed_at=run.completed_at,
+        skill_ids=skill_ids_list,
+        input_json=run.input_json,
+        prompt_used=run.prompt_used,
+        output=run.output,
+        error_message=run.error_message,
+    )
+
