@@ -447,3 +447,56 @@ class TriggerResponse(BaseModel):
 class TriggerListResponse(BaseModel):
     items: list[TriggerResponse]
     meta: PaginationMeta
+
+
+# ---------------------------------------------------------------------------
+# AI Agent Chat Interface
+# ---------------------------------------------------------------------------
+
+class GeneratedFileResponse(BaseModel):
+    id: str
+    org_id: str
+    chat_session_id: str
+    message_id: Optional[str]
+    filename: str
+    file_type: str
+    created_at: datetime
+
+    # We omit 'content' here to keep list responses light. 
+    # Download route serves 'content'.
+
+class ChatMessageResponse(BaseModel):
+    id: str
+    org_id: str
+    chat_session_id: str
+    role: str
+    content: str
+    message_type: str
+    created_at: datetime
+    # Nested generated files if any
+    files: list[GeneratedFileResponse] = Field(default_factory=list)
+
+class ChatSessionCreateRequest(BaseModel):
+    agent_id: str
+    title: Optional[str] = None
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    org_id: str
+    agent_id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+class ChatSessionListResponse(BaseModel):
+    items: list[ChatSessionResponse]
+    meta: PaginationMeta
+
+class ChatMessageCreateRequest(BaseModel):
+    content: str
+    # If the user selects a skill in the chat UI
+    skill_ids: list[str] = Field(default_factory=list)
+
+class ChatMessageListResponse(BaseModel):
+    items: list[ChatMessageResponse]
+    meta: Optional[PaginationMeta] = None

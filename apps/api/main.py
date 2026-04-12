@@ -11,6 +11,10 @@ from otel import configure_otel
 # Configure OTEL before other imports
 configure_otel()
 
+# Load environment variables from .env file before any config is read
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -22,7 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from db.seed import run_seed
 from db.session import SessionDep, create_db_and_tables, get_session
 from middleware import TenantMiddleware, AuditMiddleware
-from routers import agents, connectors, health, runs, workflows, users, oauth_connections, audit, auth, skills, triggers
+from routers import agents, connectors, health, runs, workflows, users, oauth_connections, audit, auth, skills, triggers, chats
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -116,6 +120,7 @@ app.include_router(audit.router)
 app.include_router(auth.router)
 app.include_router(skills.router)
 app.include_router(triggers.router)
+app.include_router(chats.router)
 
 
 @app.get("/", include_in_schema=False)

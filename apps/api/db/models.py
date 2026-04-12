@@ -110,6 +110,16 @@ class AgentRunTriggeredBy(str, enum.Enum):
     TRIGGER = "trigger"
 
 
+class MessageRole(str, enum.Enum):
+    USER = "user"
+    AGENT = "agent"
+
+
+class MessageType(str, enum.Enum):
+    TEXT = "text"
+    STRUCTURED = "structured"
+
+
 # ---------------------------------------------------------------------------
 # Organisation
 # ---------------------------------------------------------------------------
@@ -133,6 +143,7 @@ class Org(SQLModel, table=True):
     installed_connectors: list["InstalledConnector"] = Relationship(back_populates="org")
     oauth_connections: list["OAuthConnection"] = Relationship(back_populates="org")
     trigger_definitions: list["TriggerDefinition"] = Relationship(back_populates="org")
+    chat_sessions: list["ChatSession"] = Relationship(back_populates="org")
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +231,7 @@ class Agent(SQLModel, table=True):
     agent_runs: list["AgentRun"] = Relationship(back_populates="agent")
     skills: list[Skill] = Relationship(back_populates="agents", link_model=AgentSkillLink)
     app_connections: list["OAuthConnection"] = Relationship(back_populates="agents", link_model=AgentAppConnectionLink)
+    chat_sessions: list["ChatSession"] = Relationship(back_populates="agent")
 
 
 # ---------------------------------------------------------------------------
@@ -491,3 +503,61 @@ class AgentRun(SQLModel, table=True):
 
     # Relationships
     agent: Optional[Agent] = Relationship(back_populates="agent_runs")
+
+
+# ---------------------------------------------------------------------------
+# AI Agent Chat Interface
+# ---------------------------------------------------------------------------
+
+class ChatSession(SQLModel, table=True):
+    __tablename__ = "chat_sessions"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    agent_id: str = Field(foreign_key="agents.id", index=True)
+    title: str = Field(index=True)
+    
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+
+    # Relationships
+    org: Optional[Org] = Relationship(back_populates="chat_sessions")
+    agent: Optional["Agent"] = Relationship(back_populates="chat_sessions")
+    messages: list["ChatMessage"] = Relationship(back_populates="session")
+    files: list["GeneratedFile"] = Relationship(back_populates="session")
+
+
+class ChatMessage(SQLModel, table=True):
+    __tablename__ = "chat_messages"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    chat_session_id: str = Field(foreign_key="chat_sessions.id", index=True)
+    role: MessageRole = Field(sa_type=Enum(MessageRole, native_enum=False))
+    content: str
+    message_type: MessageType = Field(default=MessageType.TEXT, sa_type=Enum(MessageType, native_enum=False))
+    
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+
+    # Relationships
+    session: Optional[ChatSession] = Relationship(back_populates="messages")
+    generated_files: list["GeneratedFile"] = Relationship(back_populates="message")
+
+
+class GeneratedFile(SQLModel, table=True):
+    __tablename__ = "generated_files"
+
+    id: str = Field(default_factory=_new_uuid, primary_key=True)
+    org_id: str = Field(foreign_key="orgs.id", index=True)
+    chat_session_id: str = Field(foreign_key="chat_sessions.id", index=True)
+    message_id: Optional[str] = Field(default=None, foreign_key="chat_messages.id", index=True)
+    
+    filename: str
+    content: str
+    file_type: str = Field(default="text/markdown")
+    
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+
+    # Relationships
+    session: Optional[ChatSession] = Relationship(back_populates="files")
+    message: Optional[ChatMessage] = Relationship(back_populates="generated_files")

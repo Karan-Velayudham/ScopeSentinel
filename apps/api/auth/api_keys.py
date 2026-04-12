@@ -6,6 +6,8 @@ using the shared AUTH_SECRET.
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()  # Ensure .env is loaded before reading AUTH_SECRET
 from typing import Annotated, Optional
 
 import structlog
