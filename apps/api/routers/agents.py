@@ -75,7 +75,7 @@ def _agent_to_response(agent: Agent, skills: Optional[list[Skill]] = None, app_c
         timeout_seconds=agent.timeout_seconds,
         app_connections=app_conn_ids,
         skills=skill_ids,
-        status=agent.status.value,
+        status=agent.status.value if hasattr(agent.status, "value") else agent.status,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
     )
@@ -419,7 +419,7 @@ async def execute_agent(
     
     return AgentExecuteResponse(
         run_id=run_record.id,
-        status=run_record.status.value,
+        status=run_record.status.value if hasattr(run_record.status, "value") else run_record.status,
         output=run_record.output,
         error=run_record.error_message
     )
@@ -451,8 +451,8 @@ async def list_agent_runs(
         items.append(AgentRunResponse(
             id=run.id,
             agent_id=run.agent_id,
-            triggered_by=run.triggered_by.value,
-            status=run.status.value,
+            triggered_by=run.triggered_by.value if hasattr(run.triggered_by, "value") else run.triggered_by,
+            status=run.status.value if hasattr(run.status, "value") else run.status,
             created_at=run.started_at,
             completed_at=run.completed_at,
         ))
@@ -491,8 +491,8 @@ async def get_agent_run(
     return AgentRunDetailResponse(
         id=run.id,
         agent_id=run.agent_id,
-        triggered_by=run.triggered_by.value,
-        status=run.status.value,
+        triggered_by=run.triggered_by.value if hasattr(run.triggered_by, "value") else run.triggered_by,
+        status=run.status.value if hasattr(run.status, "value") else run.status,
         created_at=run.started_at,
         completed_at=run.completed_at,
         skill_ids=skill_ids_list,
