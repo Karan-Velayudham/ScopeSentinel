@@ -5,13 +5,10 @@ import {
     Activity,
     Box,
     LayoutDashboard,
-    Settings2,
     Workflow,
     LogOut,
     Bot,
-    Users,
     ShieldCheck,
-    CreditCard,
     Layers,
 } from "lucide-react"
 import { useSession, signIn, signOut } from "next-auth/react"
@@ -63,24 +60,9 @@ const data = {
             icon: Box,
         },
         {
-            title: "Settings",
-            url: "/settings",
-            icon: Settings2,
-        },
-        {
-            title: "Team & Roles",
-            url: "/settings/team",
-            icon: Users,
-        },
-        {
             title: "Audit Log",
             url: "/audit",
             icon: ShieldCheck,
-        },
-        {
-            title: "Billing & Usage",
-            url: "/billing",
-            icon: CreditCard,
         },
     ],
 }
