@@ -12,9 +12,9 @@
 #   make run TICKET=X     # Run workflow via Python CLI
 # =============================================================================
 
-AGENT_DIR       := services/agent-runtime
-API_DIR         := services/api
-ADAPTER_DIR     := services/adapter-service
+AGENT_DIR       := apps/agent-runtime
+API_DIR         := apps/api
+ADAPTER_DIR     := apps/adapter-service
 VENV            := $(AGENT_DIR)/venv
 PYTHON          := $(VENV)/bin/python
 PIP             := $(VENV)/bin/pip
