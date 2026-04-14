@@ -389,13 +389,31 @@ async def execute_agent(
     try:
         from litellm import acompletion
         
+        def _resolve_model(model: str) -> str:
+            """Ensure model name has a LiteLLM provider prefix."""
+            if not model or "/" in model:
+                return model
+            if model.startswith("claude"):
+                if "claude-3" in model or "latest" in model:
+                    return "anthropic/claude-sonnet-4-6"
+                return f"anthropic/{model}"
+            if model.startswith("gpt") or model.startswith("o1") or model.startswith("o3"):
+                return f"openai/{model}"
+            if model.startswith("gemini"):
+                return f"google/{model}"
+            if model.startswith("mistral") or model.startswith("mixtral"):
+                return f"mistral/{model}"
+            return model
+            
         # litellm expects messages list
         messages = [
             {"role": "user", "content": prompt}
         ]
         
+        resolved_model = _resolve_model(agent.model)
+        
         response = await acompletion(
-            model=agent.model,
+            model=resolved_model,
             messages=messages,
             timeout=agent.timeout_seconds,
         )

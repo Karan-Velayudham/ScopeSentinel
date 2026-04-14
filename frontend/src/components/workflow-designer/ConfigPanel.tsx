@@ -206,10 +206,10 @@ function AgentConfig({ data, update }: { data: any; update: (k: string, v: any) 
             </Field>
             <Field label="Model Override">
                 <SelectInput value={data.model || 'gpt-4o'} onChange={v => update('model', v)} options={[
+                    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
                     { value: 'gpt-4o', label: 'GPT-4o' },
                     { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-                    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-                    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+                    { value: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro' },
                 ]} />
             </Field>
             <Field label="Goal / Prompt">

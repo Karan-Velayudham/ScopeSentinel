@@ -7,7 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useApi } from "@/hooks/use-api";
 
-export default function ChatPanel({ agentId, sessionId, onSessionCreated }: any) {
+export default function ChatPanel({ agentId, agentName = "Agent", sessionId, onSessionCreated }: any) {
   const api = useApi();
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState("");
@@ -73,7 +73,7 @@ export default function ChatPanel({ agentId, sessionId, onSessionCreated }: any)
         {messages.map((msg) => (
           <div key={msg.id} className={`flex flex-col ${(msg.role === 'USER' || msg.role === 'user') ? 'items-end' : 'items-start'} max-w-[85%]`}>
             {(msg.role === 'AGENT' || msg.role === 'agent') && (
-              <span className="text-xs font-semibold text-slate-500 mb-1 ml-1">ScopeSentinel Agent</span>
+              <span className="text-xs font-semibold text-slate-500 mb-1 ml-1">{agentName}</span>
             )}
             <div 
               className={`p-4 rounded-xl shadow-sm ${(msg.role === 'USER' || msg.role === 'user') ? 'bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-br-none' : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-bl-none w-full prose prose-sm dark:prose-invert prose-slate'}`}
@@ -95,7 +95,7 @@ export default function ChatPanel({ agentId, sessionId, onSessionCreated }: any)
         ))}
         {loading && (
           <div className="flex flex-col items-start max-w-[85%]">
-            <span className="text-xs font-semibold text-slate-500 mb-1 ml-1">ScopeSentinel Agent generates...</span>
+            <span className="text-xs font-semibold text-slate-500 mb-1 ml-1">{agentName} is thinking...</span>
             <div className="p-4 rounded-xl shadow-sm bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-bl-none flex gap-1">
               <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce delay-100"></div>
               <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce delay-200"></div>

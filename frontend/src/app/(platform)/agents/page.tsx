@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Bot, Plus, Pencil, Trash2, Search } from "lucide-react"
+import { Bot, Plus, Pencil, Trash2, Search, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -86,6 +86,7 @@ export default function AgentsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredAgents.map((agent) => (
                     <Card key={agent.id} className="flex flex-col shadow-sm border-2 hover:border-primary/50 transition-colors">
+                        <Link href={`/agents/${agent.id}/chat`} className="flex-1">
                         <CardHeader className="pb-4">
                             <div className="flex items-start justify-between">
                                 <div className="p-2 bg-primary/10 rounded-md">
@@ -114,11 +115,17 @@ export default function AgentsPage() {
                                 </div>
                             </div>
                         </CardContent>
+                        </Link>
                         <CardFooter className="pt-4 border-t flex gap-2">
-                            <Link href={`/agents/${agent.id}`} className="flex-1">
-                                <Button variant="outline" className="w-full" size="sm">
-                                    <Pencil className="h-4 w-4 mr-2" />
-                                    Edit
+                            <Link href={`/agents/${agent.id}/chat`} className="flex-1">
+                                <Button variant="default" className="w-full" size="sm">
+                                    <MessageSquare className="h-4 w-4 mr-2" />
+                                    Chat
+                                </Button>
+                            </Link>
+                            <Link href={`/agents/${agent.id}`}>
+                                <Button variant="outline" size="sm" className="px-3">
+                                    <Pencil className="h-4 w-4" />
                                 </Button>
                             </Link>
                             <Button

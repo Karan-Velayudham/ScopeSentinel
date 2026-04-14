@@ -63,7 +63,7 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
         name: initialData?.name || "Ready Maker",
         description: initialData?.description || "",
         instructions: initialData?.instructions || "",
-        model: initialData?.model || "claude-3-5-sonnet-20241022",
+        model: initialData?.model || "claude-3-5-sonnet-20240620",
         app_connections: initialData?.app_connections || [],
         skills: initialData?.skills || [],
         timeout_seconds: initialData?.timeout_seconds || 60,
@@ -75,6 +75,7 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
     const [executionResult, setExecutionResult] = useState<string | null>(null)
     const [skills, setSkills] = useState<Skill[]>([])
     const [connectors, setConnectors] = useState<Connector[]>([])
+    const [models, setModels] = useState<{value: string, label: string}[]>([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
 
@@ -84,12 +85,14 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
         const fetchData = async () => {
             setLoading(true)
             try {
-                const [skillsData, connectorsData] = await Promise.all([
+                const [skillsData, connectorsData, modelsData] = await Promise.all([
                     api.get<{ items: Skill[] }>('/api/skills'),
-                    api.get<Connector[]>('/api/connectors/installed')
+                    api.get<Connector[]>('/api/connectors/installed'),
+                    api.get<{value: string, label: string}[]>('/api/models/').catch(() => [])
                 ])
                 setSkills(skillsData.items || [])
                 setConnectors(connectorsData || [])
+                setModels(modelsData || [])
             } catch (err) {
                 console.error("Failed to fetch builder data", err)
             } finally {
@@ -104,7 +107,7 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
         setSaving(true)
         try {
             const url = isEditing && initialData ? `/api/agents/${initialData.id}` : '/api/agents/';
-            const method = isEditing ? 'PATCH' : 'POST';
+            const method = isEditing ? 'PUT' : 'POST';
             
             await api.fetch(url, {
                 method,
@@ -309,14 +312,23 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
                         </div>
 
                         <div className="border rounded-xl bg-white dark:bg-zinc-900 shadow-sm overflow-hidden flex flex-col">
-                            <div className="p-3.5 border-b flex items-center justify-between hover:bg-zinc-50 cursor-pointer">
-                                <div className="flex items-center gap-2 text-sm">
+                            <div className="p-3.5 border-b flex items-center justify-between bg-zinc-50/50">
+                                <div className="flex items-center gap-2 text-sm w-full">
                                     <Sparkles className="w-4 h-4 text-orange-500 fill-orange-500/20" />
-                                    <span className="font-semibold text-[13px]">
-                                        Recommended <span className="text-muted-foreground font-medium ml-1">(Claude 4.6 Sonnet)</span>
-                                    </span>
+                                    <span className="font-semibold text-[13px] mr-2">Model:</span>
+                                    <select 
+                                        className="flex-1 bg-transparent text-sm font-medium outline-none text-slate-700 dark:text-slate-300"
+                                        value={formData.model}
+                                        onChange={(e) => setFormData({...formData, model: e.target.value})}
+                                    >
+                                        {models.map(m => (
+                                            <option key={m.value} value={m.value}>{m.label}</option>
+                                        ))}
+                                        {models.length === 0 && (
+                                            <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
+                                        )}
+                                    </select>
                                 </div>
-                                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
                             </div>
                             <div className="p-3">
                                 <textarea

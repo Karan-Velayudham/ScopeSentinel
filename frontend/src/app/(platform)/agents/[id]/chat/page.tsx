@@ -1,9 +1,10 @@
 import AgentChatWorkspace from "@/components/chat/AgentChatWorkspace";
 
-export default function AgentChatPage({ params }: { params: { id: string } }) {
+export default async function AgentChatPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   return (
     <div className="h-full">
-      <AgentChatWorkspace agentId={params.id} />
+      <AgentChatWorkspace agentId={id} />
     </div>
   );
 }

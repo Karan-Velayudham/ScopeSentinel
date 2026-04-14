@@ -8,7 +8,7 @@ from sqlmodel import select, desc, func
 import structlog
 
 from db.session import TenantSessionDep
-from auth.api_keys import CurrentUserDep
+from auth.rbac import CurrentUserDep
 from db.models import ChatSession, ChatMessage, GeneratedFile, MessageRole, MessageType, Agent
 from schemas import (
     ChatSessionCreateRequest, ChatSessionResponse, ChatSessionListResponse,
@@ -36,7 +36,14 @@ async def create_chat_session(
     session.add(chat)
     await session.commit()
     await session.refresh(chat)
-    return chat
+    return ChatSessionResponse(
+        id=chat.id,
+        org_id=chat.org_id,
+        agent_id=chat.agent_id,
+        title=chat.title,
+        created_at=chat.created_at,
+        updated_at=chat.updated_at,
+    )
 
 
 @router.get("/chats", response_model=ChatSessionListResponse)
@@ -63,7 +70,17 @@ async def list_chats(
     total = total_result.scalar() or 0
     
     return ChatSessionListResponse(
-        items=items,
+        items=[
+            ChatSessionResponse(
+                id=c.id,
+                org_id=c.org_id,
+                agent_id=c.agent_id,
+                title=c.title,
+                created_at=c.created_at,
+                updated_at=c.updated_at,
+            )
+            for c in items
+        ],
         meta=PaginationMeta(total=total, page=page, page_size=page_size, has_next=(len(items) == page_size))
     )
 
@@ -125,7 +142,23 @@ async def send_message(
         raise HTTPException(status_code=404, detail="Agent mapping invalid")
         
     from litellm import acompletion
-    
+
+    def _resolve_model(model: str) -> str:
+        """Ensure model name has a LiteLLM provider prefix."""
+        if not model or "/" in model:
+            return model  # already prefixed or empty
+        if model.startswith("claude"):
+            if "claude-3" in model or "latest" in model:
+                return "anthropic/claude-sonnet-4-6"
+            return f"anthropic/{model}"
+        if model.startswith("gpt") or model.startswith("o1") or model.startswith("o3"):
+            return f"openai/{model}"
+        if model.startswith("gemini"):
+            return f"google/{model}"
+        if model.startswith("mistral") or model.startswith("mixtral"):
+            return f"mistral/{model}"
+        return model  # unknown — pass through as-is
+
     # Fetch history
     stmt = select(ChatMessage).where(ChatMessage.chat_session_id == chat_id).order_by(ChatMessage.created_at)
     result = await session.execute(stmt)
@@ -143,9 +176,12 @@ async def send_message(
     if not any(m["content"] == request.content for m in messages):
         messages.append({"role": "user", "content": request.content})
 
+    resolved_model = _resolve_model(agent.model)
+    logger.info("chat_llm_call", model=agent.model, resolved=resolved_model, chat_id=chat_id)
+
     try:
         response = await acompletion(
-            model=agent.model,
+            model=resolved_model,
             messages=messages,
             timeout=agent.timeout_seconds,
         )
@@ -197,7 +233,15 @@ async def list_files(
     org_id = getattr(req.state, "org_id", None) or current_user.org_id
     stmt = select(GeneratedFile).where(GeneratedFile.org_id == org_id, GeneratedFile.chat_session_id == chat_id)
     result = await session.execute(stmt)
-    return result.scalars().all()
+    files = result.scalars().all()
+    return [
+        GeneratedFileResponse(
+            id=f.id, org_id=f.org_id, chat_session_id=f.chat_session_id,
+            message_id=f.message_id, filename=f.filename, file_type=f.file_type,
+            created_at=f.created_at
+        )
+        for f in files
+    ]
 
 
 @router.get("/files/{file_id}/download")

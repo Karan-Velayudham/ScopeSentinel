@@ -1,12 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ChatSidebar from "./ChatSidebar";
 import ChatPanel from "./ChatPanel";
 import AgentConfigPanel from "./AgentConfigPanel";
+import { useApi } from "@/hooks/use-api";
 
 export default function AgentChatWorkspace({ agentId }: { agentId: string }) {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [agentName, setAgentName] = useState<string>("Agent");
+  const api = useApi();
+
+  useEffect(() => {
+    if (!agentId || !api.orgId) return;
+    api.get<{ name: string }>(`/api/agents/${agentId}`)
+      .then((data) => setAgentName(data.name || "Agent"))
+      .catch(() => setAgentName("Agent"));
+  }, [agentId, api.orgId]);
 
   return (
     <div className="flex h-[calc(100vh-4rem)] w-full overflow-hidden bg-background">
@@ -23,6 +33,7 @@ export default function AgentChatWorkspace({ agentId }: { agentId: string }) {
       <div className="flex-1 min-w-[400px] border-l border-r border-border flex flex-col bg-slate-50/50 dark:bg-slate-950/50 relative">
         <ChatPanel 
           agentId={agentId} 
+          agentName={agentName}
           sessionId={activeSessionId} 
           onSessionCreated={setActiveSessionId}
         />
@@ -35,3 +46,4 @@ export default function AgentChatWorkspace({ agentId }: { agentId: string }) {
     </div>
   );
 }
+
