@@ -10,7 +10,7 @@ export default function PlatformLayout({
     return (
         <SidebarProvider>
             <AppSidebar />
-            <div className="flex flex-col flex-1 w-full bg-background min-h-screen">
+            <div className="flex flex-col flex-1 w-full bg-background min-h-screen overflow-hidden">
                 <header className="flex h-16 shrink-0 items-center justify-between border-b px-4 lg:hidden">
                     <div className="flex items-center gap-2 font-semibold">
                         <SidebarTrigger />
@@ -18,7 +18,7 @@ export default function PlatformLayout({
                     </div>
                 </header>
                 <HitlBanner />
-                <main className="flex-1 p-6 md:p-8">
+                <main className="flex-1 overflow-auto p-6 md:p-8">
                     {children}
                 </main>
             </div>
