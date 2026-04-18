@@ -30,20 +30,20 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"
 const data = {
     navMain: [
         {
-            title: "Dashboard",
+            title: "Home",
             url: "/",
             icon: LayoutDashboard,
         },
-        {
-            title: "Runs",
-            url: "/runs",
-            icon: Activity,
-        },
-        {
-            title: "Workflows",
-            url: "/workflows",
-            icon: Workflow,
-        },
+        // {
+        //     title: "Runs",
+        //     url: "/runs",
+        //     icon: Activity,
+        // },
+        // {
+        //     title: "Workflows",
+        //     url: "/workflows",
+        //     icon: Workflow,
+        // },
         {
             title: "Agents",
             url: "/agents",
@@ -55,15 +55,15 @@ const data = {
             icon: Layers,
         },
         {
-            title: "Integrations",
+            title: "Apps",
             url: "/integrations",
             icon: Box,
         },
-        {
-            title: "Audit Log",
-            url: "/audit",
-            icon: ShieldCheck,
-        },
+        // {
+        //     title: "Audit Log",
+        //     url: "/audit",
+        //     icon: ShieldCheck,
+        // },
     ],
 }
 
