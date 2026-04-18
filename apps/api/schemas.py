@@ -294,6 +294,7 @@ class AgentCreateRequest(BaseModel):
     app_connections: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     status: Literal["active", "draft", "archived"] = "active"
+    capabilities: Optional[dict] = None
 
 class AgentUpdateRequest(BaseModel):
     name: Optional[str] = None
@@ -304,6 +305,7 @@ class AgentUpdateRequest(BaseModel):
     app_connections: Optional[list[str]] = None
     skills: Optional[list[str]] = None
     status: Optional[Literal["active", "draft", "archived"]] = None
+    capabilities: Optional[dict] = None
 
 class AgentResponse(BaseModel):
     id: str
@@ -316,6 +318,7 @@ class AgentResponse(BaseModel):
     app_connections: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     status: str
+    capabilities: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

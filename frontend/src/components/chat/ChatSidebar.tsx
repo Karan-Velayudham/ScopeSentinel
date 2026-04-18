@@ -10,6 +10,7 @@ export default function ChatSidebar({ agentId, activeSessionId, onSelectSession 
   const api = useApi();
   const [recentChats, setRecentChats] = useState<any[]>([]);
   const [generatedFiles, setGeneratedFiles] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (api.orgId) {
@@ -84,11 +85,15 @@ export default function ChatSidebar({ agentId, activeSessionId, onSelectSession 
         <h3 className="text-sm font-semibold px-1 text-slate-700 dark:text-slate-300">Recents</h3>
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search" className="pl-9 bg-transparent" />
+          <Input placeholder="Search" className="pl-9 bg-transparent" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
         
         <div className="flex flex-col gap-1 mt-4">
-          {recentChats.map(chat => (
+          {recentChats
+            .filter((chat) =>
+              !searchQuery || chat.title?.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+            .map(chat => (
             <div 
               key={chat.id} 
               onClick={() => onSelectSession(chat.id)}

@@ -75,6 +75,7 @@ def _agent_to_response(agent: Agent, skills: Optional[list[Skill]] = None, app_c
         timeout_seconds=agent.timeout_seconds,
         app_connections=app_conn_ids,
         skills=skill_ids,
+        capabilities=agent.capabilities,
         status=agent.status.value if hasattr(agent.status, "value") else agent.status,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
@@ -206,6 +207,9 @@ async def update_agent(
         has_changes = True
     if body.status is not None:
         agent.status = body.status
+        has_changes = True
+    if body.capabilities is not None:
+        agent.capabilities = body.capabilities
         has_changes = True
         
     if has_changes:

@@ -1,7 +1,7 @@
 "use client"
 
 import { useSession } from "next-auth/react"
-import { apiGet, apiPost, apiPatch, apiDelete, apiFetch } from "@/lib/api-client"
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, apiFetch } from "@/lib/api-client"
 
 /**
  * Custom hook that provides org-aware API methods.
@@ -45,6 +45,9 @@ export function useApi() {
             
         patch: <T>(path: string, body: unknown, options?: RequestInit) => 
             apiPatch<T>(path, body, withAuth(options)),
+            
+        put: <T>(path: string, body: unknown, options?: RequestInit) => 
+            apiPut<T>(path, body, withAuth(options)),
             
         delete: (path: string, options?: RequestInit) => 
             apiDelete(path, withAuth(options)),

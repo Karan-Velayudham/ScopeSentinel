@@ -15,8 +15,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, Enum, String
-from sqlmodel import Field, Relationship, SQLModel
+from sqlalchemy import DateTime, Enum, JSON, String
+from sqlmodel import Field, Relationship, SQLModel, Column
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +216,10 @@ class Agent(SQLModel, table=True):
     instructions: str = Field(description="The system prompt/instructions of the agent")
     model: str = Field(default="gpt-4o")
     timeout_seconds: int = Field(default=60)
+    capabilities: Optional[dict] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True)
+    )
     status: AgentStatus = Field(
         default=AgentStatus.ACTIVE,
         sa_type=Enum(AgentStatus, native_enum=False),
