@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from sqlmodel import select, desc, func
+from sqlalchemy.orm import selectinload
 import structlog
 
 from db.session import TenantSessionDep
@@ -14,6 +15,13 @@ from schemas import (
     ChatSessionCreateRequest, ChatSessionResponse, ChatSessionListResponse,
     ChatMessageCreateRequest, ChatMessageResponse, ChatMessageListResponse,
     GeneratedFileResponse, PaginationMeta
+)
+from agent_utils import (
+    build_system_prompt,
+    get_tools_for_agent,
+    execute_platform_tool,
+    build_remote_tools_for_chat,
+    execute_remote_tool,
 )
 
 router = APIRouter(prefix="/api", tags=["Chats"])
@@ -129,24 +137,29 @@ async def send_message(
     chat = await session.get(ChatSession, chat_id)
     if not chat or chat.org_id != org_id:
         raise HTTPException(status_code=404, detail="Chat session not found")
-        
+
+    # Persist user message
     user_msg = ChatMessage(
         org_id=org_id, chat_session_id=chat_id, role=MessageRole.USER,
         content=request.content, message_type=MessageType.TEXT
     )
     session.add(user_msg)
     await session.commit()
-    
-    agent = await session.get(Agent, chat.agent_id)
+
+    # Load agent with skills eagerly (Phase 1: skill injection)
+    result = await session.execute(
+        select(Agent)
+        .where(Agent.id == chat.agent_id)
+        .options(selectinload(Agent.skills))
+    )
+    agent = result.scalars().first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent mapping invalid")
-        
-    from litellm import acompletion
 
     def _resolve_model(model: str) -> str:
         """Ensure model name has a LiteLLM provider prefix."""
         if not model or "/" in model:
-            return model  # already prefixed or empty
+            return model
         if model.startswith("claude"):
             if "claude-3" in model or "latest" in model:
                 return "anthropic/claude-sonnet-4-6"
@@ -157,39 +170,101 @@ async def send_message(
             return f"google/{model}"
         if model.startswith("mistral") or model.startswith("mixtral"):
             return f"mistral/{model}"
-        return model  # unknown — pass through as-is
+        return model
 
-    # Fetch history
+    # --- Phase 1: Build system prompt with skill instructions ---
+    skills = list(agent.skills) if agent.skills else []
+    system_prompt = build_system_prompt(agent, skills)
+
+    # --- Phase 2: Load tools ---
+    # 2a. Remote MCP tools from adapter-service (Jira, GitHub, etc.)
+    mcp_tool_defs, mcp_tool_registry = await build_remote_tools_for_chat(org_id)
+    # 2b. Platform capability tools (web search, memory) as additional tools
+    platform_tools = get_tools_for_agent(agent)
+    # Merge: MCP tools take priority; platform tools fill in the rest
+    all_tools = mcp_tool_defs + [
+        t for t in platform_tools
+        if t["function"]["name"] not in {d["function"]["name"] for d in mcp_tool_defs}
+    ]
+
+    # Fetch full conversation history
     stmt = select(ChatMessage).where(ChatMessage.chat_session_id == chat_id).order_by(ChatMessage.created_at)
-    result = await session.execute(stmt)
-    history = result.scalars().all()
-    
-    system_prompt = f"[System Instructions]\n{agent.instructions}"
-    messages = [{"role": "system", "content": system_prompt}]
-    
+    history_result = await session.execute(stmt)
+    history = history_result.scalars().all()
+
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
     for msg in history:
-        role_str = msg.role.value if hasattr(msg.role, 'value') else msg.role
+        role_str = msg.role.value if hasattr(msg.role, "value") else msg.role
         role_type = "assistant" if role_str == "agent" else "user"
         messages.append({"role": role_type, "content": msg.content})
-        
-    # In case history wasn't committed fast enough, append current user input explicitly
-    if not any(m["content"] == request.content for m in messages):
+
+    # Safety: ensure current input is in the messages list
+    if not any(m.get("content") == request.content and m.get("role") == "user" for m in messages):
         messages.append({"role": "user", "content": request.content})
 
     resolved_model = _resolve_model(agent.model)
-    logger.info("chat_llm_call", model=agent.model, resolved=resolved_model, chat_id=chat_id)
+    logger.info("chat_llm_call", model=agent.model, resolved=resolved_model,
+                chat_id=chat_id, skills=len(skills),
+                remote_tools=len(mcp_tool_defs), platform_tools=len(platform_tools))
+
+    # --- Phase 3: Synchronous ReAct loop (max 5 iterations) ---
+    from litellm import acompletion
+
+    MAX_ITERATIONS = 5
+    agent_text = ""
 
     try:
-        response = await acompletion(
-            model=resolved_model,
-            messages=messages,
-            timeout=agent.timeout_seconds,
-        )
-        agent_text = response.choices[0].message.content
+        for iteration in range(MAX_ITERATIONS):
+            call_kwargs: dict = {
+                "model": resolved_model,
+                "messages": messages,
+                "timeout": agent.timeout_seconds,
+            }
+            if all_tools:
+                call_kwargs["tools"] = all_tools
+                call_kwargs["tool_choice"] = "auto"
+
+            response = await acompletion(**call_kwargs)
+            choice = response.choices[0]
+            finish_reason = choice.finish_reason
+            resp_message = choice.message
+
+            # If the LLM returned a direct text response, we're done
+            if finish_reason == "stop" or not getattr(resp_message, "tool_calls", None):
+                agent_text = resp_message.content or ""
+                break
+
+            # --- Tool call(s) detected: execute and feed results back ---
+            # Append the assistant's tool-calling turn to messages
+            messages.append(resp_message.model_dump(exclude_unset=True))
+
+            tool_calls = resp_message.tool_calls
+            for tc in tool_calls:
+                tool_name = tc.function.name
+                tool_args = tc.function.arguments
+                logger.info("chat_tool_call", tool=tool_name, chat_id=chat_id, iteration=iteration)
+
+                tool_result = await execute_remote_tool(
+                    tool_name, tool_args, mcp_tool_registry, org_id
+                )
+
+                logger.info("chat_tool_result", tool=tool_name, chat_id=chat_id,
+                            result_len=len(str(tool_result)))
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": str(tool_result),
+                })
+        else:
+            # Max iterations reached without a text response
+            agent_text = "I've taken several actions but couldn't form a complete answer within the allowed steps. Please try asking again with more specifics."
+
     except Exception as e:
         logger.error("chat_llm_failed", error=str(e), chat_id=chat_id)
         agent_text = f"An error occurred during response generation: {e}"
-        
+
+    # Persist the final assistant message
     agent_msg = ChatMessage(
         org_id=org_id, chat_session_id=chat_id, role=MessageRole.AGENT,
         content=agent_text, message_type=MessageType.STRUCTURED
@@ -197,11 +272,10 @@ async def send_message(
     session.add(agent_msg)
     await session.commit()
     await session.refresh(agent_msg)
-    
+
+    # Parse and persist any file artifacts embedded in the response
     files_created = []
     file_pattern = re.compile(r'<file name="(.*?)">(.*?)</file>', re.DOTALL)
-    
-    # Parse for files
     for match in file_pattern.finditer(agent_text):
         fname, fcontent = match.groups()
         gen_file = GeneratedFile(
@@ -210,12 +284,12 @@ async def send_message(
         )
         session.add(gen_file)
         files_created.append(gen_file)
-        
+
     if files_created:
         await session.commit()
         for f in files_created:
             await session.refresh(f)
-            
+
     return ChatMessageResponse(
         id=agent_msg.id, org_id=agent_msg.org_id, chat_session_id=agent_msg.chat_session_id,
         role=agent_msg.role, content=agent_msg.content, message_type=agent_msg.message_type,

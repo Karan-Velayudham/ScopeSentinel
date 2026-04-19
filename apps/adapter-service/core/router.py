@@ -29,11 +29,12 @@ class ToolRouter:
                 provider_metadata = json.loads(token_data.get("provider_metadata", "{}"))
             
             # Find adapter and execute
-            from routers.oauth import adapters_map
-            adapter = adapters_map.get(provider)
-            if not adapter:
-                raise HTTPException(status_code=400, detail="Adapter not found")
-                
+            from adapters.factory import adapter_factory
+            try:
+                adapter = adapter_factory.get_adapter(provider)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Adapter for provider '{provider}' not found")
+
             result = await adapter.execute_tool(tool_name, arguments, access_token, provider_metadata)
             
             # Send audit event

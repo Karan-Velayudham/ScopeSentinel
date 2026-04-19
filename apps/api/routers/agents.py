@@ -21,27 +21,16 @@ from schemas import (
     AgentRunDetailResponse,
 )
 from db.models import AgentRun, AgentRunStatus, AgentRunTriggeredBy
+from agent_utils import build_system_prompt
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 def build_prompt(agent: Agent, skills: list[Skill], user_input: dict) -> str:
-    parts = []
-
-    # 1. Agent instructions (always)
-    parts.append(f"[System Instructions]\n{agent.instructions}")
-
-    # 2. Skill instructions (multiple skills supported)
-    if skills:
-        for skill in skills:
-            parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
-
-    # 3. User input
-    parts.append(f"[Input]\n{json.dumps(user_input)}")
-
-    system_prompt = "\n\n".join(parts)
-    return system_prompt
+    """Wrapper around the shared build_system_prompt + user input section."""
+    system = build_system_prompt(agent, skills)
+    return system + f"\n\n[Input]\n{json.dumps(user_input)}"
 
 def _agent_to_response(agent: Agent, skills: Optional[list[Skill]] = None, app_connections: Optional[list[OAuthConnection]] = None) -> AgentResponse:
     # Use provided skills or extract from agent if already loaded (selectinload)

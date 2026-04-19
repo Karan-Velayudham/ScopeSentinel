@@ -165,8 +165,18 @@ class JiraAdapter(BaseOAuthAdapter):
         async with streamablehttp_client(mcp_url, headers=headers) as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                result = await session.call_tool(tool_name, arguments)
+                
+                # Strip prefix if present (added by routers/tools.py)
+                actual_tool_name = tool_name
+                if tool_name.startswith(f"{self.provider_name}."):
+                    actual_tool_name = tool_name[len(self.provider_name)+1:]
+                
+                logger.info("jira_adapter.calling_tool", tool=actual_tool_name, 
+                            args_keys=list(arguments.keys()), cloud_id=cloud_id)
+                
+                result = await session.call_tool(actual_tool_name, arguments)
+                dump = result.model_dump()
+                logger.info("jira_adapter.tool_result", is_error=dump.get("isError"))
 
                 # Convert the CallToolResult into a serializable dictionary
-                return result.model_dump()
-
+                return dump
