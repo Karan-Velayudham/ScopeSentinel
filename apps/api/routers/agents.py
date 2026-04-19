@@ -97,6 +97,7 @@ async def create_agent(
         model=body.model,
         timeout_seconds=body.timeout_seconds,
         status=body.status,
+        capabilities=dict(body.capabilities) if body.capabilities else None,
     )
     
     if body.skills:
@@ -209,7 +210,9 @@ async def update_agent(
         agent.status = body.status
         has_changes = True
     if body.capabilities is not None:
-        agent.capabilities = body.capabilities
+        agent.capabilities = dict(body.capabilities)  # copy to ensure mutation is detected
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "capabilities")
         has_changes = True
         
     if has_changes:
