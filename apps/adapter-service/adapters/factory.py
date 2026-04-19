@@ -1,15 +1,23 @@
 from adapters.jira import JiraAdapter
+from adapters.slack import SlackAdapter
+from adapters.github import GithubAdapter
+from adapters.confluence import ConfluenceAdapter
+from adapters.notion import NotionAdapter
+from adapters.gmail import GmailAdapter
 from adapters.skeleton import SkeletonAdapter
 
 class AdapterFactory:
     def __init__(self):
         self._adapters = {
             "jira": JiraAdapter(),
-            "slack": SkeletonAdapter("slack", "Slack", "Communication", "https://cdn.brandfolder.io/5H0G5K1W/at/pl6487hbm9mhmjk8sk69bj3/slack-mark-rgb.png"),
+            "confluence": ConfluenceAdapter(),
+            "slack": SlackAdapter(),
+            "github": GithubAdapter(),
+            "notion": NotionAdapter(),
+            "gmail": GmailAdapter(),
+            # Retain skeleton for firestore/bigquery if any future plans:
             "firestore": SkeletonAdapter("firestore", "Firestore", "Database", "https://www.gstatic.com/mobilesdk/160503_mobilesdk/logo/2x/firebase_28dp.png"),
             "bigquery": SkeletonAdapter("bigquery", "BigQuery", "Data Warehouse", "https://www.gstatic.com/images/branding/product/2x/bigquery_64dp.png"),
-            "notion": SkeletonAdapter("notion", "Notion", "Productivity", "https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png"),
-            "github": SkeletonAdapter("github", "GitHub", "VCS", "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"),
         }
 
     def get_adapter(self, provider: str):
