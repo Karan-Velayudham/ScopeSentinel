@@ -222,6 +222,23 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
 
     return (
         <div className="flex-1 flex w-full bg-background h-full overflow-hidden">
+            <SkillPickerModal
+                open={skillPickerOpen}
+                onClose={() => setSkillPickerOpen(false)}
+                agentId={initialData?.id || ""}
+                attachedSkillIds={formData.skills}
+                onAttach={handleAttachSkill}
+                onDetach={handleDetachSkill}
+            />
+            <AppPickerModal
+                open={appPickerOpen}
+                onClose={() => setAppPickerOpen(false)}
+                agentId={initialData?.id || ""}
+                attachedConnectionIds={formData.app_connections}
+                onAttach={handleAttachApp}
+                onDetach={handleDetachApp}
+            />
+
             {/* Left Main Area */}
             <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-950">
                 {/* Top Nav */}
