@@ -43,6 +43,7 @@ interface FormData {
         web_search: boolean;
         web_fetch: boolean;
         conversation_search: boolean;
+        self_improve?: boolean;
     };
 }
 
@@ -61,6 +62,7 @@ interface AgentBuilderProps {
             web_search?: boolean;
             web_fetch?: boolean;
             conversation_search?: boolean;
+            self_improve?: boolean;
         } | null;
     };
     isEditing?: boolean;
@@ -79,7 +81,7 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
         app_connections: initialData?.app_connections || [],
         skills: initialData?.skills || [],
         timeout_seconds: initialData?.timeout_seconds || 60,
-        self_improve: initialData?.self_improve ?? true,
+        self_improve: initialData?.capabilities?.self_improve ?? true,
         capabilities: {
             web_search: initialData?.capabilities?.web_search ?? false,
             web_fetch: initialData?.capabilities?.web_fetch ?? false,
@@ -143,7 +145,10 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
                     app_connections: formData.app_connections,
                     skills: formData.skills,
                     timeout_seconds: formData.timeout_seconds,
-                    capabilities: formData.capabilities,
+                    capabilities: {
+                        ...formData.capabilities,
+                        self_improve: formData.self_improve
+                    },
                     status: "active"
                 })
             })
