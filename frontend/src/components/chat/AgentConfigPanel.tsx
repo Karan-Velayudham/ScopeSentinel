@@ -2,19 +2,19 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Settings,
   ExternalLink,
-  MessageSquare,
-  Globe,
-  Download,
+  Settings2,
+  Sparkles,
+  ChevronDown,
+  FileEdit,
   Layers,
   Box,
   X,
-  ToggleLeft,
-  ToggleRight,
+  Globe,
+  Download,
   History,
-  Search,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useApi } from "@/hooks/use-api";
 import SkillPickerModal from "./SkillPickerModal";
 import AppPickerModal from "./AppPickerModal";
@@ -47,12 +47,12 @@ interface Agent {
     web_search?: boolean;
     web_fetch?: boolean;
     conversation_search?: boolean;
+    self_improve?: boolean;
   } | null;
 }
 
 export default function AgentConfigPanel({ agentId }: any) {
   const api = useApi();
-  const [activeTab, setActiveTab] = useState("builder");
   const [agent, setAgent] = useState<Agent | null>(null);
 
   // Resolved objects from IDs
@@ -68,6 +68,7 @@ export default function AgentConfigPanel({ agentId }: any) {
   const [webSearch, setWebSearch] = useState(false);
   const [webFetch, setWebFetch] = useState(false);
   const [convSearch, setConvSearch] = useState(false);
+  const [selfImprove, setSelfImprove] = useState(true);
 
   const fetchAgent = useCallback(async () => {
     if (!api.orgId || !agentId) return;
@@ -76,6 +77,7 @@ export default function AgentConfigPanel({ agentId }: any) {
     setWebSearch(data.capabilities?.web_search ?? false);
     setWebFetch(data.capabilities?.web_fetch ?? false);
     setConvSearch(data.capabilities?.conversation_search ?? false);
+    setSelfImprove(data.capabilities?.self_improve ?? true);
 
     // Resolve skills
     if (data.skills?.length) {
@@ -99,14 +101,15 @@ export default function AgentConfigPanel({ agentId }: any) {
     fetchAgent().catch(console.error);
   }, [fetchAgent]);
 
-  // ── Capability toggle helpers ──────────────────────────────────────────────
+  // ── Capability toggle helpers (auto-save on toggle) ──────────────────────
 
-  const saveCapabilities = async (patch: Partial<{ web_search: boolean; web_fetch: boolean; conversation_search: boolean }>) => {
+  const saveCapabilities = async (patch: Record<string, boolean>) => {
     if (!agent) return;
     const updated = {
       web_search: webSearch,
       web_fetch: webFetch,
       conversation_search: convSearch,
+      self_improve: selfImprove,
       ...patch,
     };
     try {
@@ -132,6 +135,12 @@ export default function AgentConfigPanel({ agentId }: any) {
     const next = !convSearch;
     setConvSearch(next);
     await saveCapabilities({ conversation_search: next });
+  };
+
+  const toggleSelfImprove = async () => {
+    const next = !selfImprove;
+    setSelfImprove(next);
+    await saveCapabilities({ self_improve: next });
   };
 
   // ── Skills attach/detach ───────────────────────────────────────────────────
@@ -190,244 +199,202 @@ export default function AgentConfigPanel({ agentId }: any) {
       />
 
       <div className="flex flex-col h-full overflow-y-auto w-full border-l border-border bg-slate-50/30 dark:bg-slate-900/30">
-        {/* Header Tabs */}
-        <div className="flex px-4 pt-2 border-b border-border sticky top-0 bg-background z-10 gap-4">
-          {["builder", "chat details", "settings"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`pb-2 text-sm font-medium capitalize border-b-2 transition-colors ${
-                activeTab === tab
-                  ? "border-primary text-slate-900 dark:text-slate-100"
-                  : "border-transparent text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-          <div className="ml-auto pb-2 flex gap-2">
-            <button className="text-sm font-medium text-slate-500 hover:text-slate-900 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md">
-              Save
-            </button>
+
+        {/* Header */}
+        <div className="h-10 flex items-center justify-between px-4 border-b border-border sticky top-0 bg-background z-10">
+          <div className="flex items-center gap-1.5 text-sm font-semibold">
+            <span>Agent Preferences</span>
+            <ExternalLink className="h-3 w-3 text-muted-foreground cursor-pointer" />
           </div>
+          <span className="text-xs text-muted-foreground flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors">
+            Advanced <Settings2 className="h-3 w-3" />
+          </span>
         </div>
 
-        <div className="p-4 space-y-6">
-          {activeTab === "builder" && (
-            <>
-              {/* Agent Preferences */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold flex justify-between items-center text-slate-700 dark:text-slate-300 group cursor-pointer">
-                  <div className="flex items-center gap-1">
-                    <span>Agent Preferences</span>
-                    <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100" />
-                  </div>
-                  <span className="text-xs font-normal text-slate-500 hover:text-slate-900 flex items-center gap-1">
-                    Advanced <Settings className="h-3 w-3" />
+        <div className="p-4 space-y-5 overflow-y-auto flex-1">
+
+          {/* Agent Preferences Card */}
+          <div className="rounded-xl border border-border bg-white dark:bg-zinc-950 shadow-sm overflow-hidden">
+            {/* Model Row */}
+            <div className="p-3.5 border-b flex items-center justify-between bg-zinc-50/50">
+              <div className="flex items-center gap-2 text-sm w-full">
+                <Sparkles className="w-4 h-4 text-orange-500 fill-orange-500/20" />
+                <span className="font-semibold text-[13px] mr-2">Model:</span>
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {agent?.model || "Loading..."}
+                </span>
+                <ChevronDown className="w-3 h-3 text-muted-foreground ml-auto" />
+              </div>
+            </div>
+            {/* Instructions (read-only preview) */}
+            <div className="p-3">
+              <p className="text-[13px] text-muted-foreground whitespace-pre-wrap line-clamp-5 font-medium">
+                {agent?.instructions || "No instructions set."}
+              </p>
+            </div>
+          </div>
+
+          {/* Self-Improve Instructions */}
+          <div className="flex items-center justify-between px-2 py-1">
+            <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+              <FileEdit className="w-4 h-4 text-muted-foreground" /> Self-Improve Instructions
+            </div>
+            <Switch
+              checked={selfImprove}
+              onCheckedChange={toggleSelfImprove}
+            />
+          </div>
+
+          {/* Skills */}
+          <div className="space-y-3 pt-5 border-t">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                <Layers className="h-4 w-4" />
+                Skills
+              </h3>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-500">{attachedSkills.length} attached</span>
+                <button
+                  onClick={() => setSkillPickerOpen(true)}
+                  className="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 px-2 py-1 rounded-md font-medium border border-transparent hover:border-border transition-all"
+                >
+                  + Skill
+                </button>
+              </div>
+            </div>
+
+            {attachedSkills.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {attachedSkills.map((skill) => (
+                  <span
+                    key={skill.id}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium"
+                  >
+                    <Layers className="h-3 w-3" />
+                    {skill.name}
+                    <button
+                      onClick={() => handleDetachSkill(skill.id)}
+                      className="ml-0.5 hover:text-destructive transition-colors"
+                      title="Remove skill"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   </span>
-                </h3>
-                <div className="p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-between shadow-sm cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <span className="text-orange-500">✷</span>
-                    <span className="text-sm font-medium">
-                      Model{" "}
-                      <span className="text-slate-500 font-normal">
-                        ({agent?.model || "Loading..."})
-                      </span>
-                    </span>
-                  </div>
-                  <span className="text-slate-400">&gt;</span>
-                </div>
-                <div className="p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm">
-                  <div className="text-sm font-medium mb-1"># {agent?.name || "Agent Identity"}</div>
-                  <div className="text-xs text-slate-500 line-clamp-4 whitespace-pre-wrap">
-                    {agent?.instructions || "Loading agent instructions..."}
-                  </div>
-                </div>
+                ))}
               </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic px-1">
+                No skills attached. Click + Skill to add one.
+              </p>
+            )}
+          </div>
 
-              <hr className="border-border" />
+          {/* Apps & Tools */}
+          <div className="space-y-3 pt-5 border-t">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                <Box className="h-4 w-4" />
+                Apps &amp; Tools
+              </h3>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-500">{attachedConnections.length} connected</span>
+                <button
+                  onClick={() => setAppPickerOpen(true)}
+                  className="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 px-2 py-1 rounded-md font-medium border border-transparent hover:border-border transition-all"
+                >
+                  + App
+                </button>
+              </div>
+            </div>
 
-              {/* Skills */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Layers className="h-4 w-4" />
-                    Skills
-                  </h3>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-500">
-                      {attachedSkills.length} attached
-                    </span>
-                    <button
-                      onClick={() => setSkillPickerOpen(true)}
-                      className="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 px-2 py-1 rounded-md font-medium border border-transparent hover:border-border transition-all"
+            {attachedConnections.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {attachedConnections.map((conn) => {
+                  const icon = connectorIcon(conn);
+                  return (
+                    <div
+                      key={conn.id}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm"
                     >
-                      + Skill
-                    </button>
-                  </div>
-                </div>
-
-                {attachedSkills.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {attachedSkills.map((skill) => (
-                      <span
-                        key={skill.id}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium"
+                      <div className="w-6 h-6 rounded-md border border-border flex items-center justify-center overflow-hidden bg-white flex-shrink-0">
+                        {icon ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={icon}
+                            alt={conn.provider}
+                            className="w-4 h-4 object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <Box className="h-3.5 w-3.5 text-slate-400" />
+                        )}
+                      </div>
+                      <span className="flex-1 text-sm font-medium capitalize truncate">
+                        {connectorName(conn)}
+                      </span>
+                      <button
+                        onClick={() => handleDetachApp(conn.id)}
+                        className="text-slate-400 hover:text-destructive transition-colors ml-auto"
+                        title="Remove app"
                       >
-                        <Layers className="h-3 w-3" />
-                        {skill.name}
-                        <button
-                          onClick={() => handleDetachSkill(skill.id)}
-                          className="ml-0.5 hover:text-destructive transition-colors"
-                          title="Remove skill"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400 italic px-1">
-                    No skills attached. Click + Skill to add one.
-                  </p>
-                )}
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic px-1">
+                No apps connected. Click + App to give this agent tools.
+              </p>
+            )}
+          </div>
 
-              <hr className="border-border" />
+          {/* Built-in Capabilities */}
+          <div className="space-y-2 pt-5 border-t pb-8">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+              Built-in Capabilities
+            </h3>
 
-              {/* Apps / Tools */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Box className="h-4 w-4" />
-                    Apps &amp; Tools
-                  </h3>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-500">
-                      {attachedConnections.length} connected
-                    </span>
-                    <button
-                      onClick={() => setAppPickerOpen(true)}
-                      className="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 px-2 py-1 rounded-md font-medium border border-transparent hover:border-border transition-all"
-                    >
-                      + App
-                    </button>
-                  </div>
+            {/* Web Search */}
+            <div className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <Globe className="h-4 w-4 text-blue-500" />
+                <div>
+                  <p className="text-sm font-medium">Web Search</p>
+                  <p className="text-xs text-slate-400">Search the internet for current info</p>
                 </div>
-
-                {attachedConnections.length > 0 ? (
-                  <div className="flex flex-col gap-1.5">
-                    {attachedConnections.map((conn) => {
-                      const icon = connectorIcon(conn);
-                      return (
-                        <div
-                          key={conn.id}
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm"
-                        >
-                          <div className="w-6 h-6 rounded-md border border-border flex items-center justify-center overflow-hidden bg-white flex-shrink-0">
-                            {icon ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={icon}
-                                alt={conn.provider}
-                                className="w-4 h-4 object-contain"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = "none";
-                                }}
-                              />
-                            ) : (
-                              <Box className="h-3.5 w-3.5 text-slate-400" />
-                            )}
-                          </div>
-                          <span className="flex-1 text-sm font-medium capitalize truncate">
-                            {connectorName(conn)}
-                          </span>
-                          <button
-                            onClick={() => handleDetachApp(conn.id)}
-                            className="text-slate-400 hover:text-destructive transition-colors ml-auto"
-                            title="Remove app"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400 italic px-1">
-                    No apps connected. Click + App to give this agent tools.
-                  </p>
-                )}
               </div>
+              <Switch checked={webSearch} onCheckedChange={toggleWebSearch} />
+            </div>
 
-              <hr className="border-border" />
-
-              {/* Built-in Capabilities */}
-              <div className="space-y-2 pb-8">
-                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
-                  Built-in Capabilities
-                </h3>
-
-                {/* Web Search */}
-                <button
-                  onClick={toggleWebSearch}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-300 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Globe className="h-4 w-4 text-blue-500" />
-                    <div>
-                      <p className="text-sm font-medium">Web Search</p>
-                      <p className="text-xs text-slate-400">Search the internet for current info</p>
-                    </div>
-                  </div>
-                  {webSearch ? (
-                    <ToggleRight className="h-5 w-5 text-primary flex-shrink-0" />
-                  ) : (
-                    <ToggleLeft className="h-5 w-5 text-slate-300 flex-shrink-0" />
-                  )}
-                </button>
-
-                {/* Web Fetch */}
-                <button
-                  onClick={toggleWebFetch}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-300 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Download className="h-4 w-4 text-emerald-500" />
-                    <div>
-                      <p className="text-sm font-medium">Web Fetch</p>
-                      <p className="text-xs text-slate-400">Fetch and read content from URLs</p>
-                    </div>
-                  </div>
-                  {webFetch ? (
-                    <ToggleRight className="h-5 w-5 text-primary flex-shrink-0" />
-                  ) : (
-                    <ToggleLeft className="h-5 w-5 text-slate-300 flex-shrink-0" />
-                  )}
-                </button>
-
-                {/* Conversation Search */}
-                <button
-                  onClick={toggleConvSearch}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-300 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <History className="h-4 w-4 text-violet-500" />
-                    <div>
-                      <p className="text-sm font-medium">Search Past Conversations</p>
-                      <p className="text-xs text-slate-400">Let agent recall from prior chats</p>
-                    </div>
-                  </div>
-                  {convSearch ? (
-                    <ToggleRight className="h-5 w-5 text-primary flex-shrink-0" />
-                  ) : (
-                    <ToggleLeft className="h-5 w-5 text-slate-300 flex-shrink-0" />
-                  )}
-                </button>
+            {/* Web Fetch */}
+            <div className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <Download className="h-4 w-4 text-emerald-500" />
+                <div>
+                  <p className="text-sm font-medium">Web Fetch</p>
+                  <p className="text-xs text-slate-400">Fetch and read content from URLs</p>
+                </div>
               </div>
-            </>
-          )}
+              <Switch checked={webFetch} onCheckedChange={toggleWebFetch} />
+            </div>
+
+            {/* Conversation Search */}
+            <div className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <History className="h-4 w-4 text-violet-500" />
+                <div>
+                  <p className="text-sm font-medium">Search Past Conversations</p>
+                  <p className="text-xs text-slate-400">Let agent recall from prior chats</p>
+                </div>
+              </div>
+              <Switch checked={convSearch} onCheckedChange={toggleConvSearch} />
+            </div>
+          </div>
+
         </div>
       </div>
     </>

@@ -74,7 +74,7 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
     
     // Form State
     const [formData, setFormData] = useState<FormData>({
-        name: initialData?.name || "Ready Maker",
+        name: initialData?.name || "",
         description: initialData?.description || "",
         instructions: initialData?.instructions || "",
         model: initialData?.model || "claude-3-5-sonnet-20240620",
@@ -130,6 +130,10 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
 
     const handleSave = async () => {
         if (!api.orgId) return;
+        if (!formData.name.trim() || !formData.instructions.trim()) {
+            alert("Agent name and instructions are required.");
+            return;
+        }
         setSaving(true)
         try {
             const url = isEditing && initialData ? `/api/agents/${initialData.id}` : '/api/agents/';
@@ -256,8 +260,8 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
                             type="text"
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            className="font-semibold text-sm bg-transparent border-none outline-none focus:ring-0 p-0 w-[200px]"
-                            placeholder="Agent Name"
+                            className="font-semibold text-sm bg-transparent border-none outline-none focus:ring-0 p-0 w-[300px]"
+                            placeholder="Enter agent name"
                         />
                     </div>
                     <div className="flex items-center gap-2">
@@ -355,9 +359,9 @@ export function AgentBuilder({ initialData, isEditing = false }: AgentBuilderPro
                     <div className="flex gap-2 w-full">
                         <Button 
                             variant="secondary" 
-                            className="flex-1 h-8 text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-900 dark:text-zinc-100"
+                            className="flex-1 h-8 text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-900 dark:text-zinc-100 disabled:opacity-50"
                             onClick={handleSave}
-                            disabled={saving}
+                            disabled={saving || !formData.name.trim() || !formData.instructions.trim()}
                         >
                             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : "Save"} <kbd className="ml-2 font-mono text-[9px] bg-white/50 px-1.5 py-0.5 rounded shadow-sm text-zinc-500">⌘ S</kbd>
                         </Button>
