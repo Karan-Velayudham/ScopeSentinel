@@ -1,0 +1,10 @@
+{
+  "name": "mcp-sse-proxy",
+  "version": "1.0.0",
+  "description": "Universal MCP SSE Proxy over stdio",
+  "main": "proxy.js",
+  "type": "module",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

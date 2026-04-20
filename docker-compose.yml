@@ -142,6 +142,10 @@ services:
       API_URL: "http://api:8000"
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      SLACK_MCP_URL: "http://mcp-slack:8080/sse"
+      GITHUB_MCP_URL: "http://mcp-github:8080/sse"
+      NOTION_MCP_URL: "http://mcp-notion:8080/sse"
+      GMAIL_MCP_URL: "http://mcp-gmail:8080/sse"
     ports:
       - "8005:8005"
     depends_on:
@@ -239,7 +243,6 @@ services:
       - ./workspace:/app/workspace
       - /var/run/docker.sock:/var/run/docker.sock
     command: [ "--ticket", "${TICKET:-SCRUM-8}" ]
-
 
   # ── Trigger Engine (Phase 3) ─────────────────────────────────────────────────
   trigger-engine:
@@ -361,6 +364,52 @@ services:
         condition: service_healthy
       redpanda:
         condition: service_healthy
+
+  # ── External Dedicated MCP Servers ───────────────────────────────────────────
+  mcp-slack:
+    build:
+      context: ./apps/mcp-sse-proxy
+    command: ["npx", "-y", "@modelcontextprotocol/server-slack"]
+    container_name: scopesentinel-mcp-slack
+    env_file:
+      - .env
+    ports:
+      - "8011:8080"
+    restart: unless-stopped
+
+  mcp-github:
+    build:
+      context: ./apps/mcp-sse-proxy
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    container_name: scopesentinel-mcp-github
+    env_file:
+      - .env
+    ports:
+      - "8012:8080"
+    restart: unless-stopped
+
+  mcp-notion:
+    build:
+      context: ./apps/mcp-sse-proxy
+    command: ["npx", "-y", "@cloudflare/mcp-server-notion"]
+    container_name: scopesentinel-mcp-notion
+    env_file:
+      - .env
+    ports:
+      - "8013:8080"
+    restart: unless-stopped
+
+  mcp-gmail:
+    build:
+      context: ./apps/mcp-sse-proxy
+    # Replace this if using a different official Google Workspace package
+    command: ["npx", "-y", "@modelcontextprotocol/server-google-maps"] 
+    container_name: scopesentinel-mcp-gmail
+    env_file:
+      - .env
+    ports:
+      - "8014:8080"
+    restart: unless-stopped
 
 volumes:
   postgres_data:
